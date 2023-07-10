@@ -13,21 +13,22 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/pflag"
+	"libdb.so/acm-christmas/internal/quoted"
 	"libdb.so/acm-christmas/lib/livecapture"
 )
 
 var (
 	camerarc   = "camerarc"
 	imagePath  = "/run/user/1000/camera.bmp"
-	filterArgs []string
-	image2Args []string
+	filterArgs string
+	image2Args string
 )
 
 func init() {
 	pflag.StringVarP(&camerarc, "camerarc", "c", camerarc, "path to the camera rc file")
 	pflag.StringVarP(&imagePath, "image-path", "p", imagePath, "path to the image file")
-	pflag.StringSliceVar(&filterArgs, "filter-args", filterArgs, "args to pass to the filter")
-	pflag.StringSliceVar(&image2Args, "image2-args", image2Args, "args to pass to image2")
+	pflag.StringVar(&filterArgs, "filter-args", filterArgs, "args to pass to the filter")
+	pflag.StringVar(&image2Args, "image2-args", image2Args, "args to pass to image2")
 }
 
 func newCapture() *livecapture.Capture {
@@ -54,6 +55,12 @@ func newCapture() *livecapture.Capture {
 
 	frameRate, err := strconv.Atoi(rc["FRAMERATE"])
 	must("failed to parse CAMERA_FRAMERATE:", err)
+
+	filterArgs, err := quoted.Split(filterArgs)
+	must("failed to parse filter args:", err)
+
+	image2Args, err := quoted.Split(image2Args)
+	must("failed to parse image2 args:", err)
 
 	opts := livecapture.CaptureOpts{
 		Camera: livecapture.Camera{
