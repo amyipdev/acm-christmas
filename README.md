@@ -2,6 +2,20 @@
 
 Needs Nix. To enter, run `nix-shell`.
 
+## Shopping List
+
+- [ ] [Christmas Tree](https://www.amazon.com/Best-Choice-Products-Artificial-Christmas/dp/B018FDYGVM)
+    - Price: $49.99
+    - Size: 6ft (~1.8m)
+- [x] Raspberry Pi
+    - ~~Stolen~~ Borrowed from ACM
+- [ ] [LED strips](https://www.amazon.com/ALITOVE-LED-Individually-Addressable-Waterproof/dp/B01AG923GI)
+    - Actual LED bulbs rather than strips, so better for 2D use.
+    - Price:
+        - $15.50 (50x, 13ft, 4m)
+        - $31.00 (100x, 26ft, 8m)
+        - $46.50 (150x, 39ft, 12m)
+
 ## Tools
 
 **You must run `make`** before running any of the tools.

@@ -1,0 +1,79 @@
+package vision
+
+import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"testing"
+
+	_ "embed"
+
+	"github.com/alecthomas/assert/v2"
+)
+
+//go:embed dots.png
+var dotsPNG []byte
+
+func loadDots(t testing.TB) image.Image {
+	t.Helper()
+
+	dots, err := png.Decode(bytes.NewReader(dotsPNG))
+	assert.NoError(t, err, "cannot decode dots.png")
+
+	return dots
+}
+
+func TestFindBiggestSpot(t *testing.T) {
+	t.Run("dots", func(t *testing.T) {
+		dots := loadDots(t)
+
+		blob, err := FindBiggestSpot(dots, color.White)
+		assert.NoError(t, err, "cannot find biggest blob")
+
+		if testing.Verbose() {
+			outFile, err := os.CreateTemp("", "biggest-blob-*.png")
+			assert.NoError(t, err, "cannot create temp file")
+
+			defer outFile.Close()
+
+			err = png.Encode(outFile, blob.Filled)
+			assert.NoError(t, err, "cannot encode image")
+
+			t.Logf("biggest slot output written to %s", outFile.Name())
+			t.Logf("biggest slot: area=%d center=%v", blob.Area, blob.Center)
+		}
+
+		blob.Filled = nil // don't compare the image
+		assert.Equal(t, BigSpot{
+			Center: image.Point{X: 302, Y: 254},
+			Area:   53,
+		}, blob)
+	})
+
+	t.Run("too many", func(t *testing.T) {
+		// make a super long image
+		img := image.NewPaletted(image.Rect(0, 0, 1024, 3), color.Palette{
+			color.Transparent,
+			color.White,
+		})
+
+		// place a white pixel in the middle row every 2 pixels
+		for x := 0; x < img.Bounds().Max.X; x += 2 {
+			img.SetColorIndex(x, 1, 1)
+		}
+
+		_, err := FindBiggestSpot(img, color.White)
+		assert.Equal(t, ErrTooManySpots, err, "expected ErrTooManySpots")
+	})
+}
+
+func BenchmarkFindBiggestSpot(b *testing.B) {
+	dots := loadDots(b)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		FindBiggestSpot(dots, color.White)
+	}
+}
