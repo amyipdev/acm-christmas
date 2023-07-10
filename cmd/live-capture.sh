@@ -5,9 +5,7 @@ init() {
 	[[ -e camerarc ]] \
 		|| fatal "No camerarc file found. Please create one."
 
-	curenv=$(declare -p -x)
 	source camerarc
-	eval "$curenv"
 
 	assertEnv CAMERA
 	assertEnv FORMAT
@@ -29,6 +27,12 @@ start() {
 	[[ "$imageDest" == *.bmp ]] \
 		|| fatal "Image destination must be a BMP file"
 
+	image2Args=()
+	if [[ "$2" == "-image2" ]]; then
+		image2Args=( $3 )
+		shift 2
+	fi
+
 	log "Using $imageDest as image destination."
 	log "To read a frame, open this file and use that file descriptor."
 
@@ -40,7 +44,7 @@ start() {
 			-pixel_format "$FORMAT" \
 			-i "$CAMERA" \
 		"${@:2}" \
-		-f image2 -update 1 "$imageDest"
+		-f image2 -update 1 "${image2Args[@]}" "$imageDest"
 	rm "$imageDest"
 }
 

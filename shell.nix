@@ -8,6 +8,6 @@ pkgs.mkShell {
 	];
 
 	shellHook = ''
-		export PATH="$PATH:${builtins.toString ./.}/cmd"
+		export PATH="$PATH:${builtins.toString ./.}/bin"
 	'';
 }

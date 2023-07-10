@@ -4,7 +4,7 @@
 #
 
 # Path to the V4L2 camera
-CAMERA=/dev/video1
+PATH=/dev/video1
 
 # Format of the camera.
 FORMAT=yuyv422

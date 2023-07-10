@@ -2,7 +2,11 @@
 
 Needs Nix. To enter, run `nix-shell`.
 
-## live-capture
+## Tools
+
+**You must run `make`** before running any of the tools.
+
+### live-capture
 
 Starts an FFmpeg daemon that keeps an up-to-date BMP image that is the
 current frame of the given webcam.
@@ -49,3 +53,15 @@ live-capture snapshot /run/user/1000/camera.bmp /tmp/snapshot.png
 
 Note that if the snapshot is also a BMP file, no conversion is
 performed, so the snapshot will be very fast.
+
+### brightest-spot
+
+Finds the brightest spot in an image. It works as a daemon that checks the
+given file whenever a key is pressed on stdin. It outputs the brightest spot
+onto stdout.
+
+To use it, run:
+
+```sh
+brightest-spot /run/user/1000/camera.bmp
+```
