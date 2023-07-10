@@ -13,8 +13,23 @@ To start capturing:
 live-capture start /dev/video1 /run/user/1000/camera.bmp
 ```
 
-Using `/run/user/1000` is recommended, since on most systems it is a
-tmpfs mount, so the image will be stored in RAM.
+To start capturing with a black-and-white threshold filter:
+
+```sh
+live-capture start /dev/video1 /run/user/1000/camera.bmp \
+    -f lavfi -i color=gray:s=640x480 \
+    -f lavfi -i color=black:s=640x480 \
+    -f lavfi -i color=white:s=640x480 \
+    -filter_complex threshold
+```
+
+> **Note**: Any arguments after the output file are passed to FFmpeg
+> verbatim. The `-f lavfi -i color=...` arguments are used to create
+> black and white images, and the `-filter_complex threshold` argument
+> is used to threshold the image.
+
+> **Note**: Using `/run/user/1000` is recommended, since on most systems it is
+> a tmpfs mount, so the image will be stored in RAM.
 
 To view a snapshot of the current frame:
 
