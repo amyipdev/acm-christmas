@@ -1,10 +1,16 @@
-bin: bin/brightest-spot bin/live-capture
+bin: bin/brightest-spot bin/live-capture bin/ffutil bin/live-capture.sh
 
-bin/brightest-spot: $(shell find cmd/brightest-spot -type f)
+.PHONY: bin/brightest-spot
+bin/brightest-spot:
 	go build -o $@ ./cmd/brightest-spot
 
-bin/live-capture: $(shell find cmd/live-capture -type f)
+.PHONY: bin/live-capture
+bin/live-capture:
 	go build -o $@ ./cmd/live-capture
+
+.PHONY: bin/ffutil
+bin/ffutil:
+	go build -o $@ ./cmd/ffutil
 
 bin/live-capture.sh: cmd/live-capture.sh
 	cp $< $@
