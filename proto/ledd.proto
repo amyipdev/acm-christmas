@@ -11,7 +11,7 @@ service LEDControllerService {
   // number of LEDs.
   rpc SetLEDs(SetLEDsRequest) returns (google.protobuf.Empty) {}
   // Play the given animation on the LEDs.
-  rpc PlayLEDAnimation(PlayLEDAnimationRequest)
+  rpc PlayLEDsAnimation(PlayLEDsAnimationRequest)
   	returns (google.protobuf.Empty) {}
 }
 
@@ -23,7 +23,7 @@ message SetLEDsRequest {
   repeated Color leds = 1;
 }
 
-message PlayLEDAnimationRequest {
+message PlayLEDsAnimationRequest {
   optional uint32 repeat_count = 1;
   repeated AnimationFrame frames = 2;
 
@@ -48,7 +48,7 @@ service LEDCanvasService {
   // dimensions of the canvas obtained from GetCanvasInfo.
   rpc SetCanvas(SetCanvasRequest) returns (google.protobuf.Empty) {}
   // Play the given animation on the canvas.
-  rpc PlayLEDCanvasAnimation(PlayLEDCanvasAnimationRequest)
+  rpc PlayCanvasAnimation(PlayCanvasAnimationRequest)
   	returns (google.protobuf.Empty) {}
 }
 
@@ -67,7 +67,7 @@ message SetCanvasRequest {
   repeated Color pixels = 3;
 }
 
-message PlayLEDCanvasAnimationRequest {
+message PlayCanvasAnimationRequest {
   uint32 width = 1;
   uint32 height = 2;
   optional uint32 repeat_count = 3;
