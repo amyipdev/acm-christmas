@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+// Service for controlling the LEDs on the device. This is the most low-level
+// API for controlling the LEDs.
+service LEDControllerService {
+  // Returns the current state of the LEDs.
+  rpc GetLEDs(google.protobuf.Empty) returns (GetLEDsResponse) {}
+  // Sets all LEDs to the given colors. The number of colors must match the
+  // number of LEDs.
+  rpc SetLEDs(SetLEDsRequest) returns (google.protobuf.Empty) {}
+  // Play the given animation on the LEDs.
+  rpc PlayLEDAnimation(PlayLEDAnimationRequest)
+  	returns (google.protobuf.Empty) {}
+}
+
+message GetLEDsResponse {
+  repeated Color leds = 1;
+}
+
+message SetLEDsRequest {
+  repeated Color leds = 1;
+}
+
+message PlayLEDAnimationRequest {
+  optional uint32 repeat_count = 1;
+  repeated AnimationFrame frames = 2;
+
+  message AnimationFrame {
+    uint32 duration_ms = 1;
+    repeated Color leds = 2;
+  }
+}
+
+// Service for controlling the LEDs as a 2D canvas. The canvas must be perfectly
+// square, and some calculation will be done locally to decide the nearest LED
+// to each pixel.
+//
+// For finer control, use the LEDControllerService and the attached scan of the
+// LED layout.
+service LEDCanvasService {
+  // Returns the information of the canvas.
+  rpc GetCanvasInfo(google.protobuf.Empty) returns (GetCanvasInfoResponse) {}
+  // Returns the current state of the canvas.
+  rpc GetCanvas(google.protobuf.Empty) returns (GetCanvasResponse) {}
+  // Sets the given colors on the canvas. The number of pixels must match the
+  // dimensions of the canvas obtained from GetCanvasInfo.
+  rpc SetCanvas(SetCanvasRequest) returns (google.protobuf.Empty) {}
+  // Play the given animation on the canvas.
+  rpc PlayLEDCanvasAnimation(PlayLEDCanvasAnimationRequest)
+  	returns (google.protobuf.Empty) {}
+}
+
+message GetCanvasInfoResponse {
+  uint32 width = 1; // stride
+  uint32 height = 2;
+}
+
+message GetCanvasResponse {
+  uint32 width = 1; // stride
+  uint32 height = 2;
+  repeated Color pixels = 3;
+}
+
+message SetCanvasRequest {
+  repeated Color pixels = 3;
+}
+
+message PlayLEDCanvasAnimationRequest {
+  uint32 width = 1;
+  uint32 height = 2;
+  optional uint32 repeat_count = 3;
+  repeated AnimationFrame frames = 4;
+
+  message AnimationFrame {
+    uint32 duration_ms = 1;
+    repeated Color pixels = 2;
+  }
+}
+
+// Service for controlling the LED daemon.
+service LeddService {
+  rpc GetMode(google.protobuf.Empty) returns (GetModeResponse) {}
+  rpc SetMode(SetModeRequest) returns (google.protobuf.Empty) {}
+}
+
+message GetModeResponse {
+  Mode mode = 1;
+}
+
+message SetModeRequest {
+  Mode mode = 1;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0; // off
+  MODE_LED_CONTROLLER = 1;
+  MODE_LED_CANVAS = 2;
+}
+
+message Color {
+  uint64 rgba = 1; // 0xRRGGBBAA
+}

@@ -5,6 +5,8 @@ pkgs.mkShell {
 		ffmpeg-full
 		go
 		bash
+		protobuf
+		protolint
 	];
 
 	shellHook = ''

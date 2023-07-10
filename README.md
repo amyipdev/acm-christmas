@@ -32,50 +32,36 @@ webcam you want to use. You can find the name of your webcam by running
 Then, to start capturing, run:
 
 ```sh
-live-capture start /run/user/1000/camera.bmp
+live-capture start
 ```
 
 To start capturing with a black-and-white threshold filter:
 
 ```sh
-live-capture start /run/user/1000/camera.bmp \
-    -f lavfi -i color=gray:s=640x480 \
-    -f lavfi -i color=black:s=640x480 \
-    -f lavfi -i color=white:s=640x480 \
-    -filter_complex threshold
+live-capture start --filter-args "$(ffutil threshold 640x480 0.5)"
 ```
-
-> **Note**: Any arguments after the output file are passed to FFmpeg
-> verbatim. The `-f lavfi -i color=...` arguments are used to create
-> black and white images, and the `-filter_complex threshold` argument
-> is used to threshold the image.
-
-> **Note**: Using `/run/user/1000` is recommended, since on most systems it is
-> a tmpfs mount, so the image will be stored in RAM.
 
 To view a snapshot of the current frame:
 
 ```sh
-live-capture view /run/user/1000/camera.bmp
+live-capture view
 ```
 
 To take a snapshot of the current frame onto a PNG file:
 
 ```sh
-live-capture snapshot /run/user/1000/camera.bmp /tmp/snapshot.png
+live-capture snapshot /tmp/snapshot.png
 ```
 
-Note that if the snapshot is also a BMP file, no conversion is
-performed, so the snapshot will be very fast.
+> **Note**: If the snapshot is also a BMP file, no conversion is performed, so
+> the snapshot will be very fast.
 
-### brightest-spot
+### ledd
 
-Finds the brightest spot in an image. It works as a daemon that checks the
-given file whenever a key is pressed on stdin. It outputs the brightest spot
-onto stdout.
+The actual daemon that controls the LEDs. It exposes an HTTP server that can be
+invoked to set the color of a given LED as well as perform various other
+higher-level tasks.
 
-To use it, run:
+See [proto/ledd.proto](proto/ledd.proto) for the full API.
 
-```sh
-brightest-spot /run/user/1000/camera.bmp
-```
+TODO: implement
