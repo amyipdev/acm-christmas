@@ -1,31 +1,45 @@
 #!/usr/bin/env bash
 self="$(basename "$0")"
 
-start() {
-	local camera="$1"
-	local imageDest="$2"
+init() {
+	[[ -e camerarc ]] \
+		|| fatal "No camerarc file found. Please create one."
 
-	[[ "$camera" && "$imageDest" ]] \
-		|| fatal "Usage: $self start <camera> <imageDest> [filters...]"
+	curenv=$(declare -p -x)
+	source camerarc
+	eval "$curenv"
 
-	[[ "$camera" == /dev/video* ]] \
+	assertEnv CAMERA
+	assertEnv FORMAT
+	assertEnv SIZE
+
+	[[ "$CAMERA" == /dev/video* ]] \
 		|| fatal "Camera must be a video device"
+
+	[[ "$SIZE" == *x* ]] \
+		|| fatal "Size must be in the format <width>x<height>"
+}
+
+start() {
+	local imageDest="$1"
+
+	[[ "$imageDest" ]] \
+		|| fatal "Usage: $self start <imageDest> [filters...]"
 
 	[[ "$imageDest" == *.bmp ]] \
 		|| fatal "Image destination must be a BMP file"
-
-	local size="640x480"
-	if [[ "$3" == "-s" ]]; then
-		size="$4"
-		shift 2
-	fi
 
 	log "Using $imageDest as image destination."
 	log "To read a frame, open this file and use that file descriptor."
 
 	ffmpeg \
 		-hide_banner -loglevel error -y \
-		-f video4linux2 -s "$size" -i "$camera" "${@:3}" \
+		-f video4linux2 \
+			-framerate "$FRAMERATE" \
+			-video_size "$SIZE" \
+			-pixel_format "$FORMAT" \
+			-i "$CAMERA" \
+		"${@:3}" \
 		-f image2 -update 1 "$imageDest"
 	rm "$imageDest"
 }
@@ -102,6 +116,16 @@ fatal() {
 	log "$@"
 	exit 1
 }
+
+assertEnv() {
+	local var="$1"
+	local val="${!var}"
+	[[ "$val" ]] \
+		|| fatal "Environment variable $var is not set"
+	log "Using $var=$val"
+}
+
+init
 
 case "$1" in
 start)

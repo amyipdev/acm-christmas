@@ -1,0 +1,16 @@
+# To query for camera information, run:
+#
+#    ffmpeg -hide_banner -f video4linux2 -list_formats all -i $CAMERA
+#
+
+# Path to the V4L2 camera
+CAMERA=/dev/video1
+
+# Format of the camera.
+FORMAT=yuyv422
+
+# Resolution of the camera capture.
+SIZE=640x480
+
+# Preferred framerate of the camera capture.
+FRAMERATE=30

@@ -7,16 +7,20 @@ Needs Nix. To enter, run `nix-shell`.
 Starts an FFmpeg daemon that keeps an up-to-date BMP image that is the
 current frame of the given webcam.
 
-To start capturing:
+Before running `live-capture`, you must first edit `camerarc` to specify the
+webcam you want to use. You can find the name of your webcam by running
+`v4l2-ctl --list-devices`.
+
+Then, to start capturing, run:
 
 ```sh
-live-capture start /dev/video1 /run/user/1000/camera.bmp
+live-capture start /run/user/1000/camera.bmp
 ```
 
 To start capturing with a black-and-white threshold filter:
 
 ```sh
-live-capture start /dev/video1 /run/user/1000/camera.bmp \
+live-capture start /run/user/1000/camera.bmp \
     -f lavfi -i color=gray:s=640x480 \
     -f lavfi -i color=black:s=640x480 \
     -f lavfi -i color=white:s=640x480 \
