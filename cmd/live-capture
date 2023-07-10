@@ -39,7 +39,7 @@ start() {
 			-video_size "$SIZE" \
 			-pixel_format "$FORMAT" \
 			-i "$CAMERA" \
-		"${@:3}" \
+		"${@:2}" \
 		-f image2 -update 1 "$imageDest"
 	rm "$imageDest"
 }
