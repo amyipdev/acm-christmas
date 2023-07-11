@@ -167,8 +167,11 @@ func run() error {
 		poissonMap[pt] = struct{}{}
 	}
 
+	ledPoints := make([]image.Point, 0, numLED)
+
 	boundaryImage.EachPt(func(pt image.Point) bool {
 		if _, ok := poissonMap[pt]; ok {
+			ledPoints = append(ledPoints, pt)
 			eachCirclePx(pt, ledSize, func(pt image.Point) bool {
 				poissonImage.SetColorIndex(pt.X, pt.Y, 1)
 				return false
@@ -192,7 +195,7 @@ func run() error {
 		defer csvFile.Close()
 
 		csv := csv.NewWriter(csvFile)
-		for pt := range poissonMap {
+		for _, pt := range ledPoints {
 			if err := csv.Write([]string{
 				strconv.Itoa(pt.X),
 				strconv.Itoa(pt.Y),
