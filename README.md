@@ -9,12 +9,18 @@ Needs Nix. To enter, run `nix-shell`.
     - Size: 6ft (~1.8m)
 - [x] Raspberry Pi
     - ~~Stolen~~ Borrowed from ACM
-- [ ] [LED strips](https://www.amazon.com/ALITOVE-LED-Individually-Addressable-Waterproof/dp/B01AG923GI)
+- [ ] [LED Strips (12V)](https://www.amazon.com/ALITOVE-LED-Individually-Addressable-Waterproof/dp/B01AG923EU)
     - Actual LED bulbs rather than strips, so better for 2D use.
+    - 0.3W per bulb, 50 bulbs per strip, 15W per strip
+        - For 5V, 3A per strip
+        - For 12V, 1.25A per strip
     - Price:
-        - $15.50 (50x, 13ft, 4m)
-        - $31.00 (100x, 26ft, 8m)
-        - $46.50 (150x, 39ft, 12m)
+        - $18.50 (50x, 13ft, 4m)
+        - $37.00 (100x, 26ft, 8m)
+        - $55.50 (150x, 39ft, 12m)
+- [ ] [LED Power Supply (12V)](https://www.amazon.com/ALITOVE-Adapter-Converter-100-240V-5-5x2-1mm/dp/B01GEA8PQA)
+    - Price: $11.99
+    - 12V 5A, so can power 4 strips or 200 bulbs
 
 ## Tools
 
