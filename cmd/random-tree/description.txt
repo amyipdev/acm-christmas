@@ -1,0 +1,6 @@
+random-tree generates a set of images where each image will have one white dot
+that is within the region that the given image mask defines. The white dot is
+supposed to represent an LED.
+
+The image mask should be a PNG, JPG or BMP file. Its background can be any
+color, but the mask region must be white.

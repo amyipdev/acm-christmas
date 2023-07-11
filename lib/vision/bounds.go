@@ -31,3 +31,43 @@ func (bi *BoundaryImage) PtIn(pt image.Point) bool {
 	ar, ag, ab, aa := bi.at(pt.X, pt.Y)
 	return ar == bi.bc[0] && ag == bi.bc[1] && ab == bi.bc[2] && aa == bi.bc[3]
 }
+
+func (bi *BoundaryImage) EachPt(f func(pt image.Point) (stop bool)) {
+	y0 := bi.img.Bounds().Min.Y
+	y1 := bi.img.Bounds().Max.Y
+	x0 := bi.img.Bounds().Min.X
+	x1 := bi.img.Bounds().Max.X
+
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			if bi.PtIn(image.Point{X: x, Y: y}) {
+				if f(image.Point{X: x, Y: y}) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// Count returns the number of points in the boundary.
+func (bi *BoundaryImage) Count() int {
+	var count int
+	bi.EachPt(func(image.Point) bool {
+		count++
+		return false
+	})
+	return count
+}
+
+func (bi *BoundaryImage) PtAt(i int) (image.Point, bool) {
+	var pt image.Point
+	bi.EachPt(func(p image.Point) bool {
+		if i == 0 {
+			pt = p
+			return true
+		}
+		i--
+		return false
+	})
+	return pt, i == 0
+}
