@@ -7,66 +7,21 @@ import (
 	"math"
 
 	"libdb.so/acm-christmas/internal/intmath"
+	"libdb.so/acm-christmas/internal/xcolor"
 )
-
-// RGBAImage is an image that can be converted to RGBA.
-type RGBAImage interface {
-	image.Image
-	RGBAAt(x, y int) color.RGBA
-}
-
-var _ RGBAImage = (*image.RGBA)(nil)
-
-// RGB is a color in the RGB color space. It is represented as 3 8-bit values
-// for red, green, and blue.
-type RGB struct {
-	R, G, B uint8
-}
-
-// RGBFromRGBA converts a color.RGBA to RGB.
-func RGBFromRGBA(c color.RGBA) RGB {
-	return RGB{c.R, c.G, c.B}
-}
-
-// RGBFromColor converts any color.Color to RGB.
-func RGBFromColor(c color.Color) RGB {
-	if c, ok := c.(color.RGBA); ok {
-		return RGBFromRGBA(c)
-	}
-	r, g, b, _ := c.RGBA()
-	return RGB{
-		R: uint8(r >> 8),
-		G: uint8(g >> 8),
-		B: uint8(b >> 8),
-	}
-}
-
-// RGBA implements the color.Color interface.
-func (c RGB) RGBA() (r, g, b, a uint32) {
-	a = 0xFF << 8
-
-	r = uint32(c.R)
-	r |= r << 8
-	g = uint32(c.G)
-	g |= g << 8
-	b = uint32(c.B)
-	b |= b << 8
-
-	return
-}
 
 // LEDStrip is a strip of LEDs. It is represented as a slice of colors, where
 // each color represents the color of an LED.
-type LEDStrip []RGB
+type LEDStrip []xcolor.RGB
 
-// SetRGBA sets the RGBA color of the LED at index i. Alpha is ignored.
+// Setxcolor.RGBA sets the xcolor.RGBA color of the LED at index i. Alpha is ignored.
 func (s LEDStrip) SetRGBA(i int, c color.RGBA) {
-	s[i] = RGB{c.R, c.G, c.B}
+	s[i] = xcolor.RGBFromRGBA(c)
 }
 
 // Set sets the color of the LED at index i.
 func (s LEDStrip) Set(i int, c color.Color) {
-	s.SetRGBA(i, color.RGBAModel.Convert(c).(color.RGBA))
+	s[i] = xcolor.RGBFromColor(c)
 }
 
 // Clear clears the LED strip.
@@ -74,11 +29,9 @@ func (s LEDStrip) Clear() {
 	// This should be replaced with a memclr by the compiler.
 	// On ARM, it does 32 bytes (~10 LEDs) at a time.
 	for i := range s {
-		s[i] = RGB{}
+		s[i] = xcolor.RGB{}
 	}
 }
-
-const maxLEDs = math.MaxInt32
 
 // LEDCanvas is a canvas of LED points.
 type LEDCanvas struct {
@@ -101,7 +54,7 @@ type ledData struct {
 	neighborPixels []pointIntensity
 	// neighborColors is a list of colors of the pixels that are within the
 	// radius of the LED. It has the threshold already applied to it.
-	neighborColors []RGB
+	neighborColors []xcolor.RGB
 }
 
 type pointIntensity struct {
@@ -125,8 +78,8 @@ type neighborLED struct {
 	intensity float32
 }
 
-func applyIntensity(c RGB, intensity float32) RGB {
-	return RGB{
+func applyIntensity(c xcolor.RGB, intensity float32) xcolor.RGB {
+	return xcolor.RGB{
 		R: uint8(float32(c.R) * intensity),
 		G: uint8(float32(c.G) * intensity),
 		B: uint8(float32(c.B) * intensity),
@@ -167,59 +120,6 @@ func cubicEaseInOut(t float64) float64 {
 	return 1 - math.Pow(-2*t+2, 3)/2
 }
 
-// AveragingFunc is a function that averages a slice of colors into a single
-// color.
-type AveragingFunc func([]RGB) RGB
-
-// NewSimpleAveraging creates a new AveragingFunc that averages a slice of
-// colors into a single color. It simply averages the red, green, and blue
-// values of the colors.
-//
-// This function can handle about 2.8 million colors before overflowing.
-func NewSimpleAveraging() AveragingFunc {
-	const maxColors = math.MaxInt32 / (3 * 0xFF)
-	return func(colors []RGB) RGB {
-		var r, g, b uint32
-		for _, c := range colors {
-			r += uint32(c.R)
-			g += uint32(c.G)
-			b += uint32(c.B)
-		}
-		n := uint32(len(colors))
-		return RGB{
-			R: uint8(r / n),
-			G: uint8(g / n),
-			B: uint8(b / n),
-		}
-	}
-}
-
-// NewSquaredAveraging creates a new AveragingFunc that averages a slice of
-// colors into a single color. It squares the red, green, and blue values of the
-// colors before averaging them to give more weight to brighter colors.
-//
-// This function can handle about 33 thousand colors before overflowing.
-//
-// For more information, see:
-// https://sighack.com/post/averaging-rgb-colors-the-right-way
-func NewSquaredAveraging() AveragingFunc {
-	const maxColors = math.MaxInt32 / (3 * 0xFF * 0xFF)
-	return func(colors []RGB) RGB {
-		var r, g, b uint32
-		for _, c := range colors {
-			r += uint32(c.R) * uint32(c.R)
-			g += uint32(c.G) * uint32(c.G)
-			b += uint32(c.B) * uint32(c.B)
-		}
-		n := uint32(len(colors))
-		return RGB{
-			R: uint8(intmath.Sqrt32(int32(r / n))),
-			G: uint8(intmath.Sqrt32(int32(g / n))),
-			B: uint8(intmath.Sqrt32(int32(b / n))),
-		}
-	}
-}
-
 // LEDCanvasOpts is a set of options for creating a new LEDCanvas.
 type LEDCanvasOpts struct {
 	// Intensity is the intensity function used to calculate the intensity of a
@@ -227,7 +127,7 @@ type LEDCanvasOpts struct {
 	Intensity IntensityFunc
 	// Average is the averaging function used to average the colors of the
 	// pixels that are within the radius of an LED.
-	Average AveragingFunc
+	Average xcolor.AveragingFunc
 	// PPI is the number of pixels per inch of the final LED canvas. The higher
 	// the PPI, the higher the resolution of the final LED canvas.
 	PPI float64
@@ -238,6 +138,7 @@ type LEDCanvasOpts struct {
 // ledPositions is a slice of points, where each point represents the position
 // of an LED.
 func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, error) {
+	const maxLEDs = math.MaxInt32
 	if len(ledPositions) > maxLEDs {
 		return nil, fmt.Errorf("too many LEDs (%d), max %d", len(ledPositions), maxLEDs)
 	}
@@ -249,7 +150,7 @@ func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, e
 		opts.Intensity = NewCubicIntensity(2)
 	}
 	if opts.Average == nil {
-		opts.Average = NewSquaredAveraging()
+		opts.Average = xcolor.NewSquaredAveraging()
 	}
 
 	var ledRect image.Rectangle
@@ -271,7 +172,7 @@ func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, e
 
 		leds[i] = ledData{
 			neighborPixels: nearestPixels,
-			neighborColors: make([]RGB, 0, len(nearestPixels)),
+			neighborColors: make([]xcolor.RGB, 0, len(nearestPixels)),
 		}
 
 		for _, pixel := range nearestPixels {
@@ -319,7 +220,7 @@ func (c *LEDCanvas) Clear() {
 }
 
 // Render renders the given image to the LED canvas.
-func (c *LEDCanvas) Render(src RGBAImage, r image.Rectangle) {
+func (c *LEDCanvas) Render(src xcolor.RGBAImage, r image.Rectangle) {
 	c.Clear()
 
 	// There are two main ways to render this image:
@@ -334,7 +235,7 @@ func (c *LEDCanvas) Render(src RGBAImage, r image.Rectangle) {
 	c.render(src, r)
 }
 
-func (c *LEDCanvas) render(src RGBAImage, r image.Rectangle) {
+func (c *LEDCanvas) render(src xcolor.RGBAImage, r image.Rectangle) {
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		for x := r.Min.X; x < r.Max.X; x++ {
 			data, ok := c.pixelMap[image.Point{X: x, Y: y}]
@@ -342,7 +243,7 @@ func (c *LEDCanvas) render(src RGBAImage, r image.Rectangle) {
 				continue
 			}
 
-			color := RGBFromRGBA(src.RGBAAt(x, y))
+			color := xcolor.RGBFromRGBA(src.RGBAAt(x, y))
 
 			// Calculate the intensity of the pixel.
 			for _, led := range data.neighborLEDs {
@@ -355,7 +256,7 @@ func (c *LEDCanvas) render(src RGBAImage, r image.Rectangle) {
 	// Reset the neighbor colors.
 	for i, data := range c.ledData {
 		if len(data.neighborColors) == 0 {
-			c.leds[i] = RGB{}
+			c.leds[i] = xcolor.RGB{}
 		} else {
 			c.leds[i] = c.opts.Average(data.neighborColors)
 		}
