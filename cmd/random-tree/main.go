@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"log"
 	"math"
@@ -66,10 +67,21 @@ func main() {
 	}
 }
 
+type SubImage interface {
+	draw.Image
+	SubImage(r image.Rectangle) image.Image
+}
+
 func run() error {
-	maskImage, err := decodeImageFile(pflag.Arg(0))
+	maskImageAny, err := decodeImageFile(pflag.Arg(0))
 	if err != nil {
 		return errors.Wrap(err, "failed to decode mask image")
+	}
+
+	maskImage, ok := maskImageAny.(SubImage)
+	if !ok {
+		maskImage = image.NewRGBA(maskImageAny.Bounds())
+		draw.Draw(maskImage, maskImage.Bounds(), maskImageAny, image.ZP, draw.Src)
 	}
 
 	boundaryImage := vision.NewBoundaryImage(maskImage, color.White)
@@ -84,6 +96,11 @@ func run() error {
 	// Find the boundary box of the mask image, which is the smallest rectangle
 	// that contains all the white pixels in the mask image.
 	boundaryBox := boundaryImage.BoundaryBox()
+	log.Println("boundary box:", boundaryBox)
+
+	// Re-create the boundary image with the boundary box as the bounds.
+	maskImage = maskImage.SubImage(boundaryBox).(SubImage)
+	boundaryImage = vision.NewBoundaryImage(maskImage, color.White)
 
 	rand := rand.New(rand.NewSource(seed))
 
@@ -111,7 +128,7 @@ func run() error {
 	// distance, the more points we'll get. This effectively means the searching
 	// array is sorted in descending order.
 	poissonRadius := searchFloat(
-		float64(ledSize),
+		0.01,
 		float64(intmath.Max(maskImage.Bounds().Dx(), maskImage.Bounds().Dy())),
 		0.01, // search the radius to the nearest 0.01
 		func(r float64) bool {
@@ -119,16 +136,14 @@ func run() error {
 
 			// Sample the Poisson Disk and draw the poissonPoints on the image.
 			poissonPoints := poissondisc.Sample(
-				0, 0,
-				float64(poissonImage.Bounds().Dx()),
-				float64(poissonImage.Bounds().Dy()),
+				float64(poissonImage.Bounds().Min.X),
+				float64(poissonImage.Bounds().Min.Y),
+				float64(poissonImage.Bounds().Max.X),
+				float64(poissonImage.Bounds().Max.Y),
 				r, k, rand)
 
 			for _, ppt := range poissonPoints {
 				pt := image.Pt(int(math.Round(ppt.X)), int(math.Round(ppt.Y)))
-				if !pt.In(boundaryBox) {
-					continue
-				}
 				poissonImage.SetColorIndex(pt.X, pt.Y, 1)
 			}
 
@@ -153,30 +168,44 @@ func run() error {
 	)
 
 	poissonPoints := poissondisc.Sample(
-		0, 0,
-		float64(poissonImage.Bounds().Dx()),
-		float64(poissonImage.Bounds().Dy()),
-		float64(poissonRadius), 100, rand)
+		float64(poissonImage.Bounds().Min.X),
+		float64(poissonImage.Bounds().Min.Y),
+		float64(poissonImage.Bounds().Max.X),
+		float64(poissonImage.Bounds().Max.Y),
+		float64(poissonRadius), 10000, rand)
 
 	poissonMap := make(map[image.Point]struct{}, len(poissonPoints))
 	for _, ppt := range poissonPoints {
 		pt := image.Pt(int(math.Round(ppt.X)), int(math.Round(ppt.Y)))
-		if !pt.In(boundaryBox) {
-			continue
-		}
 		poissonMap[pt] = struct{}{}
 	}
 
 	ledPoints := make([]image.Point, 0, numLED)
+	ledImage := &image.Paletted{
+		Pix:    make([]uint8, boundaryBox.Dx()*boundaryBox.Dy()),
+		Stride: boundaryBox.Dx(),
+		Rect: image.Rectangle{
+			Min: image.ZP,
+			Max: boundaryBox.Size(),
+		},
+		Palette: []color.Color{
+			color.Black,
+			color.White,
+		},
+	}
 
 	boundaryImage.EachPt(func(pt image.Point) bool {
 		if _, ok := poissonMap[pt]; ok {
+			// Translate the point to the boundary box.
+			pt = pt.Sub(boundaryBox.Min)
+
 			ledPoints = append(ledPoints, pt)
 			xdraw.EachCirclePx(pt, ledSize, func(pt image.Point) bool {
-				poissonImage.SetColorIndex(pt.X, pt.Y, 1)
+				ledImage.SetColorIndex(pt.X, pt.Y, 1)
 				return false
 			})
 		}
+
 		return false
 	})
 
@@ -224,7 +253,7 @@ func run() error {
 		}
 		defer pngFile.Close()
 
-		if err := png.Encode(pngFile, poissonImage); err != nil {
+		if err := png.Encode(pngFile, ledImage); err != nil {
 			return errors.Wrap(err, "failed to encode PNG file")
 		}
 
