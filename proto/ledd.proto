@@ -6,29 +6,39 @@ import "google/protobuf/empty.proto";
 // API for controlling the LEDs.
 service LEDControllerService {
   // Returns the current state of the LEDs.
-  rpc GetLEDs(google.protobuf.Empty) returns (GetLEDsResponse) {}
+  rpc Get(google.protobuf.Empty) returns (GetLEDResponse) {}
   // Sets all LEDs to the given colors. The number of colors must match the
-  // number of LEDs.
-  rpc SetLEDs(SetLEDsRequest) returns (google.protobuf.Empty) {}
-  // Play the given animation on the LEDs.
-  rpc PlayLEDsAnimation(PlayLEDsAnimationRequest)
-  	returns (google.protobuf.Empty) {}
+  // number of LEDs. Calling this is equivalent to calling DeleteFrames followed
+  // by AddFrames with a single frame.
+  rpc Set(SetLEDRequest) returns (google.protobuf.Empty) {}
+  // Adds frames to the current animation. The animation will be played until
+  // either a frame with looping is received (in which case the animation will
+  // loop back), or until the last frame is reached (in which case the animation
+  // will stop until more frames are added).
+  //
+  // Note that a maximum of 4096 frames can exist at any given time. When more
+  // frames are added, the oldest frames will be deleted. At 30fps, this is
+  // about 2 minutes of animation.
+  rpc AddFrames(AddLEDFramesRequest) returns (google.protobuf.Empty) {}
+  // Deletes all frames from the current animation. The LEDs will be turned off.
+  rpc DeleteFrames(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }
 
-message GetLEDsResponse {
+message GetLEDResponse {
   repeated Color leds = 1;
 }
 
-message SetLEDsRequest {
+message SetLEDRequest {
   repeated Color leds = 1;
 }
 
-message PlayLEDsAnimationRequest {
-  optional uint32 repeat_count = 1;
-  repeated AnimationFrame frames = 2;
+message AddLEDFramesRequest {
+  repeated Frame frames = 2;
 
-  message AnimationFrame {
-    uint32 duration_ms = 1;
+  message Frame {
+    FrameMetadata metadata = 1;
+    // The colors of the LEDs. The number of colors must match the number of
+    // LEDs.
     repeated Color leds = 2;
   }
 }
@@ -45,10 +55,21 @@ service LEDCanvasService {
   // Returns the current state of the canvas.
   rpc GetCanvas(google.protobuf.Empty) returns (GetCanvasResponse) {}
   // Sets the given colors on the canvas. The number of pixels must match the
-  // dimensions of the canvas obtained from GetCanvasInfo.
+  // dimensions of the canvas obtained from GetCanvasInfo. Calling this is
+  // equivalent to calling DeleteCanvasFrames followed by AddCanvasFrames with a
+  // single frame.
   rpc SetCanvas(SetCanvasRequest) returns (google.protobuf.Empty) {}
-  // Play the given animation on the canvas.
-  rpc PlayCanvasAnimation(PlayCanvasAnimationRequest)
+  // Adds frames to the current animation. The animation will be played until
+  // either a frame with looping is received (in which case the animation will
+  // loop back), or until the last frame is reached (in which case the animation
+  // will stop until more frames are added).
+  //
+  // Note that a maximum of 4096 frames can exist at any given time. When more
+  // frames are added, the oldest frames will be deleted. At 30fps, this is
+  // about 2 minutes of animation.
+  rpc AddCanvasFrames(AddCanvasFramesRequest) returns (google.protobuf.Empty) {}
+  // Deletes all frames from the current animation. The LEDs will be turned off.
+  rpc DeleteCanvasFrames(google.protobuf.Empty)
   	returns (google.protobuf.Empty) {}
 }
 
@@ -67,16 +88,26 @@ message SetCanvasRequest {
   repeated Color pixels = 3;
 }
 
-message PlayCanvasAnimationRequest {
-  uint32 width = 1;
-  uint32 height = 2;
-  optional uint32 repeat_count = 3;
-  repeated AnimationFrame frames = 4;
+message AddCanvasFramesRequest {
+  repeated Frame frames = 2;
 
-  message AnimationFrame {
-    uint32 duration_ms = 1;
+  message Frame {
+    FrameMetadata metadata = 1;
+    // The pixels formatted as an array of color values. The number of pixels
+    // must match the dimensions of the canvas obtained from GetCanvasInfo.
     repeated Color pixels = 2;
   }
+}
+
+message FrameMetadata {
+  // The duration of the frame in milliseconds. After this duration, the next
+  // frame will be shown. A duration of 0 means that the frame will be shown
+  // forever until a new frame is added. If multiple frames are added with a
+  // duration of 0, only the last one will be shown.
+  uint32 duration_ms = 1;
+  // The number of times to loop the frame. If 0, the frame will be looped
+  // forever.
+  optional uint32 loop_count = 2;
 }
 
 // Service for controlling the LED daemon.
@@ -100,5 +131,5 @@ enum Mode {
 }
 
 message Color {
-  uint64 rgba = 1; // 0xRRGGBBAA
+  fixed64 rgba = 1; // 0xRRGGBBAA, alpha is ignored
 }
