@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+	"libdb.so/acm-christmas/internal/xdraw"
 	"libdb.so/acm-christmas/lib/vision"
 
 	_ "golang.org/x/image/bmp"
@@ -177,6 +178,12 @@ func run(ctx context.Context) error {
 		return result[i].File < result[j].File
 	})
 
+	boundingBox := findBoundingBox(result)
+	// Translate all points to the top left corner of the bounding box.
+	for i := range result {
+		result[i].Spot.Center = result[i].Spot.Center.Sub(boundingBox.Min)
+	}
+
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
 	}
@@ -188,12 +195,20 @@ func run(ctx context.Context) error {
 	}
 
 	if outputPNG {
-		if err := createPNGOutput(result); err != nil {
+		if err := createPNGOutput(result, boundingBox); err != nil {
 			return errors.Wrap(err, "failed to create PNG output")
 		}
 	}
 
 	return nil
+}
+
+func findBoundingBox(results []processingResult) image.Rectangle {
+	pts := make([]image.Point, 0, len(results))
+	for _, result := range results {
+		pts = append(pts, result.Spot.Center)
+	}
+	return xdraw.BoundingBox(pts)
 }
 
 func createCSVOutput(results []processingResult) error {
@@ -229,7 +244,7 @@ func createCSVOutput(results []processingResult) error {
 	return nil
 }
 
-func createPNGOutput(results []processingResult) error {
+func createPNGOutput(results []processingResult, boundingBox image.Rectangle) error {
 	log.Println("writing PNG images to", outDir)
 
 	for i, r := range results {
@@ -241,7 +256,8 @@ func createPNGOutput(results []processingResult) error {
 		}
 		defer pngFile.Close()
 
-		if err := png.Encode(pngFile, r.Spot.Filled); err != nil {
+		img := xdraw.SubImage(r.Spot.Filled, boundingBox)
+		if err := png.Encode(pngFile, img); err != nil {
 			return errors.Wrap(err, "failed to encode PNG file")
 		}
 
