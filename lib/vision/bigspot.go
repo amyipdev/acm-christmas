@@ -16,15 +16,6 @@ type BigSpot struct {
 	Area   int
 }
 
-// maxSpots is the maximum number of spots to detect.
-const maxSpots = 0xFF - 1
-
-// ErrTooManySpots is returned when there are too many spots in the image. This
-// limitation exists because we use a single byte to represent the spot in the
-// fill buffer, with each byte representing a spot and 0 reserved for none. This
-// means we can only detect 255 spots.
-var ErrTooManySpots = errors.New("too many spots (max 255)")
-
 // ErrNoSpots is returned when there are no spots in the image.
 var ErrNoSpots = errors.New("no spots found in image")
 
@@ -34,15 +25,8 @@ var ErrNoSpots = errors.New("no spots found in image")
 // exactly, so the color of the spot must match exactly the color
 // parameter.
 func FindBiggestSpot(img image.Image, matchingColor color.Color) (BigSpot, error) {
-	b := newSpotFinder(img)
-
-	fill, err := b.findBiggestSpot(matchingColor)
-	if err != nil {
-		return BigSpot{}, err
-	}
-
-	spot := b.toBigSpot(fill)
-	return spot, nil
+	b := NewSpotFinder(img)
+	return b.FindBiggestSpot(matchingColor)
 }
 
 type fillMark = uint8 // make bytes.F happy
@@ -76,7 +60,8 @@ func replaceFillMarks(marks []fillMark, old, new fillMark) {
 	}
 }
 
-type spotFinder struct {
+// SpotFinder finds spots in an image.
+type SpotFinder struct {
 	src        image.Image
 	srcAt      imageutil.AtFunc
 	size       image.Point
@@ -84,10 +69,11 @@ type spotFinder struct {
 	floodQueue []image.Point
 }
 
-func newSpotFinder(src image.Image) *spotFinder {
+// NewSpotFinder creates a new SpotFinder for the given image.
+func NewSpotFinder(src image.Image) *SpotFinder {
 	w := src.Bounds().Max.X
 	h := src.Bounds().Max.Y
-	return &spotFinder{
+	return &SpotFinder{
 		src:        src,
 		srcAt:      imageutil.NewAtFunc(src),
 		size:       image.Point{w, h},
@@ -96,20 +82,36 @@ func newSpotFinder(src image.Image) *spotFinder {
 	}
 }
 
-func (b *spotFinder) Reset(img image.Image) {
-	if b.src.Bounds() != img.Bounds() {
-		*b = *newSpotFinder(img)
+// Reset resets the SpotFinder for the given image. This is useful if you want
+// to reuse the SpotFinder for multiple images of the same size.
+func (b *SpotFinder) Reset(src image.Image) {
+	if b.src.Bounds() != src.Bounds() {
+		*b = *NewSpotFinder(src)
 		return
 	}
 
-	b.src = img
-	b.srcAt = imageutil.NewAtFunc(img)
+	b.src = src
+	b.srcAt = imageutil.NewAtFunc(src)
 	for k := range b.filled {
 		b.filled[k] = markNotFilled
 	}
 }
 
-func (b *spotFinder) findBiggestSpot(matchingColor color.Color) (fillResult, error) {
+// FindBiggestSpot finds the spot with the largest area.
+//
+// The color parameter is the color of the spot. Colors are compared
+// exactly, so the color of the spot must match exactly the color
+// parameter.
+func (b *SpotFinder) FindBiggestSpot(matchingColor color.Color) (BigSpot, error) {
+	fill, err := b.findBiggestSpot(matchingColor)
+	if err != nil {
+		return BigSpot{}, err
+	}
+	spot := b.toBigSpot(fill)
+	return spot, nil
+}
+
+func (b *SpotFinder) findBiggestSpot(matchingColor color.Color) (fillResult, error) {
 	var biggest fillResult
 
 	for y := 0; y < b.size.Y; y++ {
@@ -152,7 +154,7 @@ type fillResult struct {
 	Bounds image.Rectangle
 }
 
-func (b *spotFinder) toBigSpot(r fillResult) BigSpot {
+func (b *SpotFinder) toBigSpot(r fillResult) BigSpot {
 	center := image.Point{
 		X: r.Bounds.Min.X + r.Bounds.Dx()/2,
 		Y: r.Bounds.Min.Y + r.Bounds.Dy()/2,
@@ -189,7 +191,7 @@ func (b *spotFinder) toBigSpot(r fillResult) BigSpot {
 // fill flood-fills the buffer with 1s where the color matches. It returns
 // the number of pixels filled. The filled buffer for this fill is marked
 // with the given id. The id must not be 0.
-func (b *spotFinder) fill(x, y int, color color.Color) fillResult {
+func (b *SpotFinder) fill(x, y int, color color.Color) fillResult {
 	b.floodQueue = b.floodQueue[:0]
 	queue := append(b.floodQueue, image.Point{x, y})
 
@@ -242,7 +244,7 @@ func (b *spotFinder) fill(x, y int, color color.Color) fillResult {
 	}
 }
 
-func (b *spotFinder) filledIx(x, y int) int {
+func (b *SpotFinder) filledIx(x, y int) int {
 	return y*b.size.X + x
 }
 
