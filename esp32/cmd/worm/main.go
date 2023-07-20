@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 	"machine"
+	"runtime/interrupt"
 	"time"
 
 	"tinygo.org/x/drivers/ws2812"
@@ -10,8 +11,10 @@ import (
 
 const numLEDs = 50
 
-const wormLength = 3
+const wormLength = 1
 const wormSpeed = 100 * time.Millisecond
+
+var colorOn = color.RGBA{255, 255, 255, 0}
 
 func main() {
 	machine.GPIO1.Configure(machine.PinConfig{Mode: machine.PinOutput})
@@ -33,9 +36,11 @@ func main() {
 
 		// Turn on the head LED bulb.
 		head := (tail + wormLength - 1) % numLEDs
-		colors[head] = color.RGBA{255, 0, 0, 0}
+		colors[head] = colorOn
 
 		// Update the LED strip.
+		state := interrupt.Disable()
 		led.WriteColors(colors)
+		interrupt.Restore(state)
 	}
 }
