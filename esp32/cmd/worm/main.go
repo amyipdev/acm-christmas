@@ -12,7 +12,7 @@ import (
 const numLEDs = 50
 
 const wormLength = 1
-const wormSpeed = 100 * time.Millisecond
+const wormSpeed = 200 * time.Millisecond
 
 var colorOn = color.RGBA{255, 255, 255, 0}
 
