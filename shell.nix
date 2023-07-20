@@ -70,6 +70,7 @@ pkgs.mkShell {
 	buildInputs = with pkgs; [
 		niv
 		jq
+		moreutils # for parallel
 
 		ffmpeg-full
 		bash
