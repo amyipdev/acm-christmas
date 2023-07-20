@@ -19,6 +19,13 @@ It is also recommended that you record at 60fps. This will give you more frames
 to work with and more lee-way when you're trying to find the timestamp of the
 first LED turning on.
 
+If you use Android, it is recommended that you use the [Open
+Camera][open-camera] app. It has a lot of useful features, including the
+ability to tune down the ISO and exposure time, which will reduce the amount of
+noise in the video.
+
+[open-camera]: https://opencamera.org.uk/
+
 ### Finding the timestamp
 
 Find the timestamp of the frame where the first LED turns on.
