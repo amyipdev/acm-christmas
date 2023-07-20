@@ -1,8 +1,7 @@
 {}:
 
 let
-	src = import ./nix/sources.nix {};
-	pkgs = import src.nixpkgs {};
+	pkgs = import ./nix/pkgs.nix {};
 in
 
 let
@@ -70,6 +69,7 @@ with builtins;
 pkgs.mkShell {
 	buildInputs = with pkgs; [
 		niv
+		jq
 
 		ffmpeg-full
 		bash

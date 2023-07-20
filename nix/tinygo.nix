@@ -2,21 +2,21 @@
 
 let
 	version = "0.28.1";
-	os = "linux";
 
-	src = {
-		amd64 = fetchzip {
-			url = "https://github.com/tinygo-org/tinygo/releases/download/v0.28.1/tinygo${version}.${os}-amd64.tar.gz";
-			sha256 = "sha256-6LxGiphcNxpm9uWbWKcPWBAVppsQoNs9RCHOuLm1E+o=";
-		};
-	};
+	createURL = { GOOS, GOARCH, ... }:
+		let
+			base = "https://github.com/tinygo-org/tinygo/releases/download";
+			name = "tinygo${version}.${GOOS}-${GOARCH}.tar.gz";
+		in
+			"${base}/v${version}/${name}";
 in
 
 runCommandLocal "tinygo-${version}" {
 	inherit version;
+	src = fetchTarball (createURL go);
 	nativeBuildInputs = [ makeWrapper ];
 } ''
-	cp --no-preserve=mode,ownership -r ${src.amd64} $out
+	cp --no-preserve=mode,ownership -r $src $out
 	chmod +x $out/bin/*
 	wrapProgram $out/bin/tinygo \
 		--set GOROOT ${go}/share/go \
