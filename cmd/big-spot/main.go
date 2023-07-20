@@ -1,0 +1,306 @@
+package main
+
+import (
+	"context"
+	"encoding/csv"
+	"fmt"
+	"image"
+	"image/png"
+	"log"
+	"math"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+
+	_ "embed"
+	_ "image/jpeg"
+	_ "image/png"
+
+	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
+	"libdb.so/acm-christmas/lib/vision"
+
+	_ "golang.org/x/image/bmp"
+)
+
+//go:embed README
+var readme string
+
+var (
+	maskFile  = ""
+	maskColor = colorFlag{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	spotColor = colorFlag{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	outDir    = ""
+	csvName   = "led-points.csv"
+	outputPNG = false
+	maxJobs   = runtime.NumCPU()
+)
+
+func init() {
+	log.SetFlags(0)
+}
+
+func main() {
+	pflag.Usage = func() {
+		log.Println(readme)
+		log.Printf("Usage:")
+		log.Printf("  %s [options] <input-file-or-directory>", os.Args[0])
+		log.Printf("")
+		log.Printf("Options:")
+		pflag.PrintDefaults()
+	}
+
+	pflag.StringVarP(&maskFile, "mask", "M", maskFile, "Image mask file, acts as a boundary")
+	pflag.VarP(&maskColor, "mask-color", "C", "Color of the mask, in hex format")
+	pflag.VarP(&spotColor, "spot-color", "c", "Color of the spots, in hex format")
+	pflag.IntVarP(&maxJobs, "max-jobs", "j", maxJobs, "Maximum number of concurrent jobs")
+	pflag.StringVar(&csvName, "csv-name", csvName, "Points CSV output file name")
+	pflag.StringVarP(&outDir, "out-dir", "o", outDir, "Output directory, empty to use temp dir")
+	pflag.BoolVar(&outputPNG, "output-png", outputPNG, "Output PNG files")
+	pflag.Parse()
+
+	if maskFile != "" {
+		log.Fatalln("mask is not implemented yet")
+	}
+
+	if pflag.NArg() == 0 {
+		pflag.Usage()
+		os.Exit(1)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	if err := run(ctx); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context) error {
+	files := make([]string, 0, pflag.NArg())
+	for _, file := range pflag.Args() {
+		stat, err := os.Stat(file)
+		if err != nil {
+			return fmt.Errorf("failed to stat %q: %w", file, err)
+		}
+
+		if stat.IsDir() {
+			d, err := os.ReadDir(file)
+			if err != nil {
+				return fmt.Errorf("failed to read dir %q: %w", file, err)
+			}
+			for _, f := range d {
+				if f.IsDir() {
+					continue
+				}
+				files = append(files, filepath.Join(file, f.Name()))
+			}
+		} else {
+			files = append(files, file)
+		}
+	}
+
+	// var maskImage *vision.BoundaryImage
+	// if maskFile != "" {
+	// 	img, err := decodeImageFile(maskFile)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to decode mask image: %w", err)
+	// 	}
+	// 	maskImage = vision.NewBoundaryImage(img, maskColor.AsColor())
+	// }
+
+	errg, ctx := errgroup.WithContext(ctx)
+	defer errg.Wait()
+
+	fileCh := make(chan string)
+	resultCh := make(chan processingResult)
+
+	for i := 0; i < maxJobs; i++ {
+		i := i
+		errg.Go(func() error {
+			processor := newProcessor()
+			istr := padDigits(i, maxJobs)
+
+			for file := range fileCh {
+				log.Printf("%s: processing %s", istr, file)
+
+				result, err := processor.process(ctx, file)
+				if err != nil {
+					return fmt.Errorf("%s: %w", file, err)
+				}
+
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case resultCh <- result:
+				}
+			}
+
+			return nil
+		})
+	}
+
+	result := make([]processingResult, 0, len(files))
+	errg.Go(func() error {
+		for range files {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case r := <-resultCh:
+				result = append(result, r)
+			}
+		}
+		return nil
+	})
+
+	errg.Go(func() error {
+		defer close(fileCh)
+		for _, file := range files {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case fileCh <- file:
+			}
+		}
+		return nil
+	})
+
+	if err := errg.Wait(); err != nil {
+		return err
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].File < result[j].File
+	})
+
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create output directory")
+	}
+
+	if csvName != "" {
+		if err := createCSVOutput(result); err != nil {
+			return errors.Wrap(err, "failed to create CSV output")
+		}
+	}
+
+	if outputPNG {
+		if err := createPNGOutput(result); err != nil {
+			return errors.Wrap(err, "failed to create PNG output")
+		}
+	}
+
+	return nil
+}
+
+func createCSVOutput(results []processingResult) error {
+	csvPath := filepath.Join(outDir, csvName)
+	log.Println("writing CSV file to", csvPath)
+
+	csvFile, err := os.Create(csvPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create CSV file")
+	}
+	defer csvFile.Close()
+
+	csv := csv.NewWriter(csvFile)
+	for _, r := range results {
+		if err := csv.Write([]string{
+			strconv.Itoa(r.Spot.Center.X),
+			strconv.Itoa(r.Spot.Center.Y),
+			strconv.Itoa(r.Spot.Area),
+		}); err != nil {
+			return errors.Wrap(err, "failed to write CSV record")
+		}
+	}
+
+	csv.Flush()
+	if err := csv.Error(); err != nil {
+		return errors.Wrap(err, "failed to flush CSV writer")
+	}
+
+	if err := csvFile.Close(); err != nil {
+		return errors.Wrap(err, "failed to close CSV file")
+	}
+
+	return nil
+}
+
+func createPNGOutput(results []processingResult) error {
+	log.Println("writing PNG images to", outDir)
+
+	for i, r := range results {
+		pngPath := filepath.Join(outDir, padDigits(i, len(results))+".png")
+
+		pngFile, err := os.Create(pngPath)
+		if err != nil {
+			return errors.Wrap(err, "failed to create PNG file")
+		}
+		defer pngFile.Close()
+
+		if err := png.Encode(pngFile, r.Spot.Filled); err != nil {
+			return errors.Wrap(err, "failed to encode PNG file")
+		}
+
+		if err := pngFile.Close(); err != nil {
+			return errors.Wrap(err, "failed to close PNG file")
+		}
+	}
+
+	return nil
+}
+
+func padDigits(n, max int) string {
+	numDigits := int(math.Log10(float64(max))) + 1
+	numf := fmt.Sprintf("%%0%dd", numDigits)
+	return fmt.Sprintf(numf, n)
+}
+
+type processor struct {
+	spots *vision.SpotFinder
+}
+
+type processingResult struct {
+	File string
+	Spot vision.BigSpot
+}
+
+var blankImage = image.NewRGBA(image.Rect(0, 0, 1, 1))
+
+func newProcessor() *processor {
+	return &processor{
+		spots: vision.NewSpotFinder(blankImage),
+	}
+}
+
+func (p *processor) process(ctx context.Context, inputImage string) (processingResult, error) {
+	var result processingResult
+
+	img, err := decodeImageFile(inputImage)
+	if err != nil {
+		return result, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	p.spots.Reset(img)
+
+	biggest, err := p.spots.FindBiggestSpot(spotColor.AsColor())
+	if err != nil {
+		return result, fmt.Errorf("failed to find biggest spot: %w", err)
+	}
+
+	return processingResult{File: inputImage, Spot: biggest}, nil
+}
+
+func decodeImageFile(path string) (image.Image, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	return img, err
+}

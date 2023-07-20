@@ -1,0 +1,5 @@
+big-spot
+--------
+
+Find the biggest spot of white in a given image. The spot is determined by
+calculating the area of all white pixels in the image.
