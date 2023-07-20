@@ -47,25 +47,9 @@ func TestFindBiggestSpot(t *testing.T) {
 
 		blob.Filled = nil // don't compare the image
 		assert.Equal(t, BigSpot{
-			Center: image.Point{X: 302, Y: 254},
+			Center: image.Point{X: 303, Y: 255},
 			Area:   53,
 		}, blob)
-	})
-
-	t.Run("too many", func(t *testing.T) {
-		// make a super long image
-		img := image.NewPaletted(image.Rect(0, 0, 1024, 3), color.Palette{
-			color.Transparent,
-			color.White,
-		})
-
-		// place a white pixel in the middle row every 2 pixels
-		for x := 0; x < img.Bounds().Max.X; x += 2 {
-			img.SetColorIndex(x, 1, 1)
-		}
-
-		_, err := FindBiggestSpot(img, color.White)
-		assert.Equal(t, ErrTooManySpots, err, "expected ErrTooManySpots")
 	})
 }
 

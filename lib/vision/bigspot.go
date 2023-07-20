@@ -1,6 +1,7 @@
 package vision
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -35,24 +36,51 @@ var ErrNoSpots = errors.New("no spots found in image")
 func FindBiggestSpot(img image.Image, matchingColor color.Color) (BigSpot, error) {
 	b := newSpotFinder(img)
 
-	spots, err := b.findSpots(matchingColor)
+	fill, err := b.findBiggestSpot(matchingColor)
 	if err != nil {
 		return BigSpot{}, err
 	}
 
-	biggest, ok := b.findBiggest(spots)
-	if !ok {
-		return BigSpot{}, ErrNoSpots
-	}
+	spot := b.toBigSpot(fill)
+	return spot, nil
+}
 
-	return biggest, nil
+type fillMark = uint8 // make bytes.F happy
+
+const (
+	markNotFilled fillMark = 0
+	markFilling            = 'f'
+	markFilled             = 'F'
+	markBiggest            = 'b'
+)
+
+type fillMarks []fillMark
+
+func replaceFillMarks(marks []fillMark, old, new fillMark) {
+	i := 0
+	for i < len(marks) {
+		// Do a regular check. This works fine if we have a run of old pixels.
+		if marks[i] == old {
+			marks[i] = new
+			i++
+			continue
+		}
+
+		// We might have a run of non-old pixels. Skip them.
+		next := bytes.IndexByte(marks[i:], old)
+		if next == -1 {
+			break
+		}
+
+		i += next
+	}
 }
 
 type spotFinder struct {
 	src        image.Image
 	srcAt      imageutil.AtFunc
 	size       image.Point
-	filled     []uint8
+	filled     []fillMark
 	floodQueue []image.Point
 }
 
@@ -63,23 +91,31 @@ func newSpotFinder(src image.Image) *spotFinder {
 		src:        src,
 		srcAt:      imageutil.NewAtFunc(src),
 		size:       image.Point{w, h},
-		filled:     make([]byte, w*h),
+		filled:     make([]fillMark, w*h),
 		floodQueue: make([]image.Point, 0, 16),
 	}
 }
 
-type spotData struct {
-	Area int
-	ID   byte
+func (b *spotFinder) Reset(img image.Image) {
+	if b.src.Bounds() != img.Bounds() {
+		*b = *newSpotFinder(img)
+		return
+	}
+
+	b.src = img
+	b.srcAt = imageutil.NewAtFunc(img)
+	for k := range b.filled {
+		b.filled[k] = markNotFilled
+	}
 }
 
-func (b *spotFinder) findSpots(matchingColor color.Color) ([]spotData, error) {
-	spots := make([]spotData, 0, 8)
+func (b *spotFinder) findBiggestSpot(matchingColor color.Color) (fillResult, error) {
+	var biggest fillResult
 
 	for y := 0; y < b.size.Y; y++ {
-		stride := y * b.size.X
 		for x := 0; x < b.size.X; x++ {
-			if b.filled[stride+x] != 0 {
+			ptIx := b.filledIx(x, y)
+			if b.filled[ptIx] != markNotFilled {
 				continue
 			}
 
@@ -87,86 +123,55 @@ func (b *spotFinder) findSpots(matchingColor color.Color) ([]spotData, error) {
 				continue
 			}
 
-			if len(spots) >= maxSpots {
-				return nil, ErrTooManySpots
+			fill := b.fill(x, y, matchingColor)
+			if fill.Area > biggest.Area {
+				biggest = fill
+				for i, v := range b.filled {
+					switch v {
+					case markBiggest:
+						// Demote the previous biggest to filled.
+						b.filled[i] = markFilled
+					case markFilling:
+						// Upgrade the filling marks to biggest.
+						b.filled[i] = markBiggest
+					}
+				}
 			}
-
-			id := byte(len(spots) + 1)
-
-			area := b.fill(x, y, matchingColor, id)
-			if area == 0 {
-				panic("area is 0")
-			}
-
-			spots = append(spots, spotData{
-				ID:   id,
-				Area: area,
-			})
 		}
 	}
 
-	return spots, nil
+	if biggest.Area == 0 {
+		return fillResult{}, ErrNoSpots
+	}
+
+	return biggest, nil
 }
 
-func (b *spotFinder) findBiggest(spots []spotData) (BigSpot, bool) {
-	var biggest spotData
-	for _, b := range spots {
-		if b.Area > biggest.Area {
-			biggest = b
-		}
-	}
+type fillResult struct {
+	Area   int
+	Bounds image.Rectangle
+}
 
-	if biggest.ID == 0 {
-		return BigSpot{}, false
-	}
-
-	// Find the minimum and maximum x and y values for the spot.
-	minX := b.size.X
-	minY := b.size.Y
-	maxX := 0
-	maxY := 0
-
-	w := b.size.X
-	h := b.size.Y
-
-	for y := 0; y < h; y++ {
-		stride := y * w
-		for x := 0; x < w; x++ {
-			i := stride + x
-			if b.filled[i] != biggest.ID {
-				// Set this to 0 for black.
-				b.filled[i] = 0
-				continue
-			}
-
-			// Set this to 1 for the given color.
-			// We'll use this with the palette to set the color.
-			b.filled[i] = 1
-
-			if x < minX {
-				minX = x
-			}
-			if x > maxX {
-				maxX = x
-			}
-			if y < minY {
-				minY = y
-			}
-			if y > maxY {
-				maxY = y
-			}
-		}
-	}
-
+func (b *spotFinder) toBigSpot(r fillResult) BigSpot {
 	center := image.Point{
-		X: (minX + maxX) / 2,
-		Y: (minY + maxY) / 2,
+		X: r.Bounds.Min.X + r.Bounds.Dx()/2,
+		Y: r.Bounds.Min.Y + r.Bounds.Dy()/2,
+	}
+
+	// Clear everything except for the biggest marks. Set the biggest marks
+	// to 1 and everything else to 0.
+	for i, v := range b.filled {
+		if v == markBiggest {
+			b.filled[i] = 1
+		} else {
+			b.filled[i] = 0
+		}
 	}
 
 	filledImage := &image.Paletted{
 		Pix:    b.filled,
 		Rect:   b.src.Bounds(),
-		Stride: w,
+		Stride: b.src.Bounds().Dx(),
 		Palette: []color.Color{
 			color.Transparent,
 			b.src.At(center.X, center.Y),
@@ -176,18 +181,26 @@ func (b *spotFinder) findBiggest(spots []spotData) (BigSpot, bool) {
 	return BigSpot{
 		Filled: filledImage,
 		Center: center,
-		Area:   biggest.Area,
-	}, true
+		Area:   r.Area,
+	}
+
 }
 
 // fill flood-fills the buffer with 1s where the color matches. It returns
 // the number of pixels filled. The filled buffer for this fill is marked
 // with the given id. The id must not be 0.
-func (b *spotFinder) fill(x, y int, color color.Color, id byte) int {
-	queue := b.floodQueue[:0]
-	queue = append(queue, image.Point{x, y})
+func (b *spotFinder) fill(x, y int, color color.Color) fillResult {
+	b.floodQueue = b.floodQueue[:0]
+	queue := append(b.floodQueue, image.Point{x, y})
 
-	var count int
+	replaceFillMarks(b.filled, markFilling, markNotFilled)
+
+	var area int
+	bounds := image.Rectangle{
+		Min: image.Point{x, y},
+		Max: image.Point{x + 1, y + 1},
+	}
+
 	for len(queue) > 0 {
 		p := queue[0]
 		queue = queue[1:]
@@ -202,23 +215,31 @@ func (b *spotFinder) fill(x, y int, color color.Color, id byte) int {
 			continue
 		}
 
-		i := b.filledIx(p.X, p.Y)
-
 		// Skip if we've already filled this pixel.
-		if b.filled[i] != 0 {
+		ptIx := b.filledIx(p.X, p.Y)
+		if b.filled[ptIx] == markFilling {
 			continue
 		}
 
-		count++
-		b.filled[i] = id
+		// Mark this pixel as being filled.
+		b.filled[ptIx] = markFilling
 
+		bounds = bounds.Union(image.Rectangle{
+			Min: p,
+			Max: p.Add(image.Point{1, 1}),
+		})
+
+		area++
 		queue = append(queue, image.Point{p.X - 1, p.Y})
 		queue = append(queue, image.Point{p.X + 1, p.Y})
 		queue = append(queue, image.Point{p.X, p.Y - 1})
 		queue = append(queue, image.Point{p.X, p.Y + 1})
 	}
 
-	return count
+	return fillResult{
+		Area:   area,
+		Bounds: bounds,
+	}
 }
 
 func (b *spotFinder) filledIx(x, y int) int {
