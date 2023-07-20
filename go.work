@@ -2,5 +2,5 @@ go 1.20
 
 use (
 	.
-	./cmd/esp32-driver/
+	./cmd/esp32-cycle/
 )
