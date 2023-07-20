@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+main() {
+	if (( $# < 2 )); then
+		log "ffmpeg-bulk.sh [ffmpeg options...] <input-dir> <output-dir/?>"
+		return 1
+	fi
+
+	ffmpegArgs=( "${@:1:$#-2}" )
+	inputDir="${@:$#-1:1}"
+	outputPath="${@:$#}"
+
+	outputDir=$(dirname "$outputPath")
+	outputName=$(basename "$outputPath")
+
+	if [[ ! $outputName == *"?"* ]]; then
+		log "Output tail must contain a question mark, e.g. \"output-?.mp4\""
+		return 1
+	fi
+
+	outputNamePrefix="${outputName%%\?*}"
+	outputNameSuffix="${outputName##*\?}"
+
+	cd "$inputDir"
+	inputFiles=( * )
+	inputExt=""
+	for i in "${!inputFiles[@]}"; do
+		name="${inputFiles[$i]}"
+		ext="${name##*.}"
+		name="${name%.*}"
+		if [[ -z $inputExt ]]; then
+			inputExt="$ext"
+		elif [[ $ext != $inputExt ]]; then
+			log "Input files must have the same extension"
+			return 1
+		fi
+		inputFiles[$i]="$name"
+	done
+
+	outputDir=$(realpath "$outputDir")
+	mkdir -p "$outputDir"
+
+	parallel -i ffmpeg \
+		-loglevel error \
+		-hide_banner \
+		-i "{}.$inputExt" \
+		"${ffmpegArgs[@]}" \
+		"$outputDir/$outputNamePrefix{}$outputNameSuffix" \
+		-- "${inputFiles[@]}"
+}
+
+log() {
+	echo "$@" >&2
+}
+
+main "$@"
