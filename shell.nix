@@ -8,14 +8,7 @@ in
 let
 	# Tinygo target for gopls to use.
 	tinygoTarget = "esp32-coreboard-v2";
-	# Use all directories in cmd/ that start with "esp32-" for Tinygo.
-	tinygoPaths =
-		with builtins;
-		with pkgs.lib;
-		attrNames
-			(filterAttrs
-				(k: v: v == "directory" && hasPrefix "esp32-" k)
-				(readDir (./. + "/cmd")));
+	tinygoPaths = [ "esp32" ];
 
 	tinygoHook =
 		with pkgs.lib;
@@ -44,30 +37,27 @@ let
 			}
 		'';
 
-	gopls =
-		with pkgs.lib;
-		with builtins;
-		pkgs.writeShellScriptBin "gopls" ''
+	withTinygoHook = name: bin:
+		pkgs.writeShellScriptBin name ''
 			${tinygoHook}
 			if isTinygo; then
 				echo "Detected Tinygo, loading for target $TINYGO_TARGET" >&2
 				hookTinygoEnv
 			fi
-			exec ${pkgs.gopls}/bin/gopls "$@"
+			exec ${bin} "$@"
 		'';
-	
-	# Disable staticcheck.
-	staticcheck = pkgs.writeShellScriptBin "staticcheck" ''
-		echo "staticcheck is disabled" >&2
-	'';
 
-	# Hijack Go to load Tinygo's environment if we're in a Tinygo project.
-	go = pkgs.writeShellScriptBin "go" ''
+  go = withTinygoHook "go" "${pkgs.go}/bin/go";
+	gopls = withTinygoHook "gopls" "${pkgs.gopls}/bin/gopls";
+	goimports = withTinygoHook "goimports" "${pkgs.gotools}/bin/goimports";
+
+	staticcheck = pkgs.writeShellScriptBin "staticcheck" ''
 		${tinygoHook}
 		if isTinygo; then
-			hookTinygoEnv
+			echo "Not running staticcheck for Tinygo" >&2
+			exit 0
 		fi
-		exec ${pkgs.go}/bin/go "$@"
+		exec ${pkgs.go-tools}/bin/staticcheck "$@"
 	'';
 
 	# Use the precompiled Tinygo which has ESP32 support.
@@ -89,6 +79,7 @@ pkgs.mkShell {
 		# Go tools.
 		go
 		gopls
+		goimports
 		staticcheck
 
 		# ESP32 programming.
