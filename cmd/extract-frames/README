@@ -1,0 +1,9 @@
+extract-frames
+--------------
+
+Program to extract frames from a video file. It works by using FFmpeg to extract
+every Nth frame from the video file and save it as a PNG image.
+
+This program is intended to be used in conjunction with the esp32/cmd/worm
+program, which turns on each LED in sequence to create a worm-like effect to be
+captured by a camera.
