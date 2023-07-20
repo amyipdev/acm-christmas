@@ -52,9 +52,9 @@ type LEDCanvas struct {
 type ledData struct {
 	// neighborPixels is a list of pixels that are within the radius of the LED.
 	neighborPixels []pointIntensity
-	// neighborColors is a list of colors of the pixels that are within the
+	// neighborAverages is a list of colors of the pixels that are within the
 	// radius of the LED. It has the threshold already applied to it.
-	neighborColors []xcolor.RGB
+	neighborAverages []xcolor.AveragingPoint
 }
 
 type pointIntensity struct {
@@ -100,6 +100,9 @@ type IntensityFunc func(distance float64) float64
 // intensity is calculated using a linear function.
 func NewLinearIntensity(maxDistance float64) IntensityFunc {
 	return func(distance float64) float64 {
+		if distance > maxDistance {
+			return 0
+		}
 		return 1 - distance/maxDistance
 	}
 }
@@ -109,7 +112,23 @@ func NewLinearIntensity(maxDistance float64) IntensityFunc {
 // intensity is calculated using a cubic function.
 func NewCubicIntensity(maxDistance float64) IntensityFunc {
 	return func(distance float64) float64 {
+		if distance > maxDistance {
+			return 0
+		}
 		return 1 - cubicEaseInOut(distance/maxDistance)
+	}
+}
+
+// NewStepIntensity creates a new IntensityFunc that calculates the intensity
+// of a pixel based on the distance between the pixel and the nearest LED. The
+// intensity is 1 if the distance is less than the max distance, and 0
+// otherwise.
+func NewStepIntensity(maxDistance float64) IntensityFunc {
+	return func(distance float64) float64 {
+		if distance > maxDistance {
+			return 0
+		}
+		return 1
 	}
 }
 
@@ -143,16 +162,6 @@ func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, e
 		return nil, fmt.Errorf("too many LEDs (%d), max %d", len(ledPositions), maxLEDs)
 	}
 
-	if opts.PPI == 0 {
-		opts.PPI = 128
-	}
-	if opts.Intensity == nil {
-		opts.Intensity = NewCubicIntensity(2)
-	}
-	if opts.Average == nil {
-		opts.Average = xcolor.NewSquaredAveraging()
-	}
-
 	var ledRect image.Rectangle
 	for _, ledPos := range ledPositions {
 		ledRect.Min.X = intmath.Min(ledRect.Min.X, ledPos.X)
@@ -161,8 +170,25 @@ func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, e
 		ledRect.Max.Y = intmath.Max(ledRect.Max.Y, ledPos.Y)
 	}
 
+	// Translate the LED positions so that the top left LED is at (0, 0).
+	for i, ledPos := range ledPositions {
+		ledPositions[i] = ledPos.Sub(ledRect.Min)
+	}
+
 	aspectRatio := float64(ledRect.Dx()) / float64(ledRect.Dy())
 	canvasRect := image.Rect(0, 0, int(opts.PPI*aspectRatio), int(opts.PPI))
+
+	if opts.PPI == 0 {
+		opts.PPI = 128
+	}
+	if opts.Intensity == nil {
+		minDist := FindMinDistance(ledPositions)
+		canvasScale := float64(canvasRect.Dx()) / float64(ledRect.Dx())
+		opts.Intensity = NewStepIntensity(minDist.Distance / 2 * canvasScale)
+	}
+	if opts.Average == nil {
+		opts.Average = xcolor.NewSquaredAveraging()
+	}
 
 	pixelMap := make(map[image.Point]pixelData, int(opts.PPI)*len(ledPositions))
 	leds := make([]ledData, len(ledPositions))
@@ -171,8 +197,8 @@ func NewLEDCanvas(ledPositions []image.Point, opts LEDCanvasOpts) (*LEDCanvas, e
 		nearestPixels := allPixelsWithIntensity(canvasRect, ledRect, led, opts.Intensity, 0.01)
 
 		leds[i] = ledData{
-			neighborPixels: nearestPixels,
-			neighborColors: make([]xcolor.RGB, 0, len(nearestPixels)),
+			neighborPixels:   nearestPixels,
+			neighborAverages: make([]xcolor.AveragingPoint, 0, len(nearestPixels)),
 		}
 
 		for _, pixel := range nearestPixels {
@@ -199,9 +225,15 @@ func ptIx(r image.Rectangle, x, y int) int {
 	return (y-r.Min.Y)*r.Dx() + (x - r.Min.X)
 }
 
-// Bounds returns the bounds of the LED canvas.
-func (c *LEDCanvas) Bounds() image.Rectangle {
+// Bounds returns the bounds of the image canvas.
+func (c *LEDCanvas) CanvasBounds() image.Rectangle {
 	return c.canvasRect
+}
+
+// LEDBounds returns the boundary box of the LEDs on the LED canvas.
+// The boundary box is the smallest rectangle that contains all LEDs.
+func (c *LEDCanvas) LEDBounds() image.Rectangle {
+	return c.ledRect
 }
 
 // Stride returns the stride of the LED canvas.
@@ -209,8 +241,8 @@ func (c *LEDCanvas) Stride() int {
 	return c.canvasRect.Dx()
 }
 
-// Buffer returns the internal buffer of the LED canvas.
-func (c *LEDCanvas) Buffer() LEDStrip {
+// LEDs returns the internal buffer of the LED canvas.
+func (c *LEDCanvas) LEDs() LEDStrip {
 	return c.leds
 }
 
@@ -219,8 +251,15 @@ func (c *LEDCanvas) Clear() {
 	c.leds.Clear()
 }
 
-// Render renders the given image to the LED canvas.
-func (c *LEDCanvas) Render(src xcolor.RGBAImage, r image.Rectangle) {
+// Render renders the given image to the LED canvas. The alpha channel of the
+// image is ignored.
+func (c *LEDCanvas) Render(src *image.RGBA) error {
+	if !src.Rect.Eq(c.canvasRect) {
+		return fmt.Errorf(
+			"image bounds %v does not match canvas bounds %v",
+			src.Rect, c.canvasRect)
+	}
+
 	c.Clear()
 
 	// There are two main ways to render this image:
@@ -232,36 +271,53 @@ func (c *LEDCanvas) Render(src xcolor.RGBAImage, r image.Rectangle) {
 	//    pixel, calculate the intensity of the pixel and add it to the LED.
 
 	// TODO: benchmark
-	c.render(src, r)
+	c.render(src)
+
+	return nil
 }
 
-func (c *LEDCanvas) render(src xcolor.RGBAImage, r image.Rectangle) {
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
+func (c *LEDCanvas) render(src *image.RGBA) {
+	y1 := src.Rect.Min.Y
+	y2 := src.Rect.Max.Y
+	x1 := src.Rect.Min.X
+	x2 := src.Rect.Max.X
+
+	for y := y1; y < y2; y++ {
+		x := x1
+		p := src.PixOffset(x, y)
+		for x < x2 {
 			data, ok := c.pixelMap[image.Point{X: x, Y: y}]
-			if !ok {
-				continue
+			if ok {
+				color := xcolor.RGB{
+					R: src.Pix[p+0],
+					G: src.Pix[p+1],
+					B: src.Pix[p+2],
+				}
+
+				// Calculate the intensity of the pixel.
+				for _, led := range data.neighborLEDs {
+					data := &c.ledData[led.index]
+					data.neighborAverages = append(data.neighborAverages, xcolor.AveragingPoint{
+						Color:     applyIntensity(color, led.intensity),
+						Intensity: led.intensity,
+					})
+				}
 			}
 
-			color := xcolor.RGBFromRGBA(src.RGBAAt(x, y))
-
-			// Calculate the intensity of the pixel.
-			for _, led := range data.neighborLEDs {
-				data := &c.ledData[led.index]
-				data.neighborColors = append(data.neighborColors, applyIntensity(color, led.intensity))
-			}
+			x += 1
+			p += 4
 		}
 	}
 
 	// Reset the neighbor colors.
 	for i, data := range c.ledData {
-		if len(data.neighborColors) == 0 {
+		if len(data.neighborAverages) == 0 {
 			c.leds[i] = xcolor.RGB{}
 		} else {
-			c.leds[i] = c.opts.Average(data.neighborColors)
+			c.leds[i] = c.opts.Average(data.neighborAverages)
 		}
 		// clear for next render
-		c.ledData[i].neighborColors = c.ledData[i].neighborColors[:0]
+		c.ledData[i].neighborAverages = c.ledData[i].neighborAverages[:0]
 	}
 }
 
@@ -273,12 +329,18 @@ func allPixelsWithIntensity(
 	intensityFn IntensityFunc,
 	minIntensity float64,
 ) []pointIntensity {
+	// Calculate the scale between the LED and canvas.
+	canvasScale := float64(canvasRect.Dx()) / float64(ledRect.Dx())
+
 	// Calculate the pt nearest to the given LED point.
 	// This is our "current position".
 	pt := image.Point{
-		X: int(math.Round(float64(led.X-ledRect.Min.X) / float64(ledRect.Dx()) * float64(canvasRect.Dx()))),
-		Y: int(math.Round(float64(led.Y-ledRect.Min.Y) / float64(ledRect.Dy()) * float64(canvasRect.Dy()))),
+		X: int(float64(led.X-ledRect.Min.X) * canvasScale),
+		Y: int(float64(led.Y-ledRect.Min.Y) * canvasScale),
 	}
+
+	// Save this point so we can calculate the distance.
+	ledPt := pt
 
 	// Iterate from the center point and outwards in a spiral.
 	// See https://stackoverflow.com/a/3706260/5041327.
@@ -294,7 +356,8 @@ func allPixelsWithIntensity(
 	var duds int
 
 	for {
-		intensity := intensityFn(distance(pt, led))
+		// Scale the point back to the LED canvas.
+		intensity := intensityFn(distance(pt, ledPt))
 		if intensity > minIntensity {
 			points = append(points, pointIntensity{
 				Point:     pt,
@@ -304,8 +367,7 @@ func allPixelsWithIntensity(
 			duds++
 		}
 
-		pt.X += direction.X
-		pt.Y += direction.Y
+		pt = pt.Add(direction)
 		segmentPassed++
 
 		if segmentPassed == segmentLength {
@@ -338,8 +400,8 @@ func distance(pt1, pt2 image.Point) float64 {
 
 // PtDistance is a pair of points and the distance between them.
 type PtDistance struct {
-	pt1, pt2 image.Point
-	distance float64
+	Pt1, Pt2 image.Point
+	Distance float64
 }
 
 // FindMinDistance returns the pair of points with the smallest distance
@@ -363,8 +425,8 @@ func FindMinDistance(points []image.Point) PtDistance {
 	}
 
 	return PtDistance{
-		pt1:      minPt1,
-		pt2:      minPt2,
-		distance: minDistance,
+		Pt1:      minPt1,
+		Pt2:      minPt2,
+		Distance: minDistance,
 	}
 }
