@@ -5,7 +5,6 @@ import (
 	"image/color"
 
 	"github.com/pierrre/imageutil"
-	"libdb.so/acm-christmas/internal/intmath"
 )
 
 // BoundaryImage is an image that marks some boundary by filling the boundary
@@ -39,10 +38,10 @@ func NewBoundaryImage(img image.Image, bc color.Color) *BoundaryImage {
 				continue
 			}
 
-			bi.br.Min.X = intmath.Min(bi.br.Min.X, x)
-			bi.br.Min.Y = intmath.Min(bi.br.Min.Y, y)
-			bi.br.Max.X = intmath.Max(bi.br.Max.X, x)
-			bi.br.Max.Y = intmath.Max(bi.br.Max.Y, y)
+			bi.br = bi.br.Union(image.Rectangle{
+				Min: image.Point{X: x, Y: y},
+				Max: image.Point{X: x + 1, Y: y + 1},
+			})
 		}
 	}
 
