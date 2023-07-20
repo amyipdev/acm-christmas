@@ -5,13 +5,11 @@ import (
 	"image/color"
 )
 
-// RGBAImage is an image that can be converted to RGBA.
-type RGBAImage interface {
-	image.Image
-	RGBAAt(x, y int) color.RGBA
+// NRGBAToRGBAImage converts an *image.NRGBA to an *image.RGBA.
+// It does not perform alpha-premultiplication.
+func NRGBAToRGBAImage(img *image.NRGBA) *image.RGBA {
+	return (*image.RGBA)(img)
 }
-
-var _ RGBAImage = (*image.RGBA)(nil)
 
 // RGB is a color in the RGB color space. It is represented as 3 8-bit values
 // for red, green, and blue.
@@ -39,14 +37,12 @@ func RGBFromColor(c color.Color) RGB {
 
 // RGBA implements the color.Color interface.
 func (c RGB) RGBA() (r, g, b, a uint32) {
-	a = 0xFF << 8
-
 	r = uint32(c.R)
 	r |= r << 8
 	g = uint32(c.G)
 	g |= g << 8
 	b = uint32(c.B)
 	b |= b << 8
-
+	a = 0xFFFF
 	return
 }
