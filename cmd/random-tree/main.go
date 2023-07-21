@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"image"
 	"image/color"
@@ -12,7 +11,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	_ "embed"
 	_ "image/jpeg"
@@ -20,6 +18,7 @@ import (
 	"github.com/fogleman/poissondisc"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
+	"libdb.so/acm-christmas/internal/csvutil"
 	"libdb.so/acm-christmas/internal/intmath"
 	"libdb.so/acm-christmas/internal/xdraw"
 	"libdb.so/acm-christmas/lib/vision"
@@ -217,29 +216,8 @@ func run() error {
 		csvPath := filepath.Join(outDir, csvName)
 		log.Println("writing CSV file to", csvPath)
 
-		csvFile, err := os.Create(csvPath)
-		if err != nil {
-			return errors.Wrap(err, "failed to create CSV file")
-		}
-		defer csvFile.Close()
-
-		csv := csv.NewWriter(csvFile)
-		for _, pt := range ledPoints {
-			if err := csv.Write([]string{
-				strconv.Itoa(pt.X),
-				strconv.Itoa(pt.Y),
-			}); err != nil {
-				return errors.Wrap(err, "failed to write CSV record")
-			}
-		}
-
-		csv.Flush()
-		if err := csv.Error(); err != nil {
-			return errors.Wrap(err, "failed to flush CSV writer")
-		}
-
-		if err := csvFile.Close(); err != nil {
-			return errors.Wrap(err, "failed to close CSV file")
+		if err := csvutil.MarshalFile(csvPath, ledPoints); err != nil {
+			return errors.Wrap(err, "failed to marshal CSV file")
 		}
 	}
 

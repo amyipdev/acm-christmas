@@ -1,18 +1,13 @@
 package main
 
 import (
-	"bufio"
-	"encoding/csv"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
-	"io"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +16,7 @@ import (
 
 	"github.com/disintegration/imaging"
 	"github.com/spf13/pflag"
+	"libdb.so/acm-christmas/internal/csvutil"
 	"libdb.so/acm-christmas/internal/xdraw"
 	"libdb.so/acm-christmas/lib/leddraw"
 
@@ -127,42 +123,11 @@ func main() {
 }
 
 func readCSVPoints(csvPath string) ([]image.Point, error) {
-	f, err := os.Open(csvPath)
+	pts, err := csvutil.UnmarshalFile[image.Point](csvPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal CSV file %q: %v", csvPath, err)
 	}
-
-	csvr := csv.NewReader(bufio.NewReader(f))
-	var points []image.Point
-
-	for {
-		record, err := csvr.Read()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, err
-		}
-		if len(record) < 2 {
-			return nil, fmt.Errorf("expected x,y point, got %v", record)
-		}
-
-		var p image.Point
-
-		p.X, err = strconv.Atoi(record[0])
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse x point %q: %v", record[0], err)
-		}
-
-		p.Y, err = strconv.Atoi(record[1])
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse y point %q: %v", record[1], err)
-		}
-
-		points = append(points, p)
-	}
-
-	return points, nil
+	return pts, nil
 }
 
 func decodeImageFile(path string) (image.Image, error) {

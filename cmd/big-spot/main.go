@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/csv"
 	"fmt"
 	"image"
 	"image/png"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 
 	_ "embed"
 	_ "image/jpeg"
@@ -22,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+	"libdb.so/acm-christmas/internal/csvutil"
 	"libdb.so/acm-christmas/internal/xdraw"
 	"libdb.so/acm-christmas/lib/vision"
 
@@ -215,32 +214,24 @@ func createCSVOutput(results []processingResult) error {
 	csvPath := filepath.Join(outDir, csvName)
 	log.Println("writing CSV file to", csvPath)
 
-	csvFile, err := os.Create(csvPath)
-	if err != nil {
-		return errors.Wrap(err, "failed to create CSV file")
+	type record struct {
+		X    int
+		Y    int
+		Area int
 	}
-	defer csvFile.Close()
 
-	csv := csv.NewWriter(csvFile)
+	records := make([]record, 0, len(results))
 	for _, r := range results {
-		if err := csv.Write([]string{
-			strconv.Itoa(r.Spot.Center.X),
-			strconv.Itoa(r.Spot.Center.Y),
-			strconv.Itoa(r.Spot.Area),
-		}); err != nil {
-			return errors.Wrap(err, "failed to write CSV record")
-		}
+		records = append(records, record{
+			X:    r.Spot.Center.X,
+			Y:    r.Spot.Center.Y,
+			Area: r.Spot.Area,
+		})
 	}
 
-	csv.Flush()
-	if err := csv.Error(); err != nil {
-		return errors.Wrap(err, "failed to flush CSV writer")
+	if err := csvutil.MarshalFile(csvPath, records); err != nil {
+		return errors.Wrap(err, "failed to marshal CSV file")
 	}
-
-	if err := csvFile.Close(); err != nil {
-		return errors.Wrap(err, "failed to close CSV file")
-	}
-
 	return nil
 }
 
