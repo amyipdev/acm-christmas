@@ -35,6 +35,7 @@ var (
 	outFile       = "led-image.png"
 	maxPtDistance = 0.0 // auto
 	ppi           = 72.0
+	fill          = false
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	pflag.StringVarP(&outFile, "out", "o", outFile, "path to the output PNG file")
 	pflag.Float64Var(&maxPtDistance, "max-distance", maxPtDistance, "maximum distance between a point and an LED")
 	pflag.Float64Var(&ppi, "ppi", ppi, "pixels per inch")
+	pflag.BoolVar(&fill, "fill", fill, "fill or fit the source image (default: fit)")
 }
 
 func main() {
@@ -49,11 +51,6 @@ func main() {
 
 	if !strings.HasSuffix(outFile, ".png") {
 		log.Fatalln("output file must be a PNG")
-	}
-
-	img, err := decodeImageFile(pflag.Arg(0))
-	if err != nil {
-		log.Fatalln("failed to decode source image:", err)
 	}
 
 	ledPoints, err := readCSVPoints(ledPointsFile)
@@ -75,8 +72,26 @@ func main() {
 	// TODO: scale while preserving aspect ratio, and center the image.
 	canvasBounds := ledCanvas.CanvasBounds()
 
+	if pflag.Arg(0) == "" {
+		log.Printf("Debug Information:")
+		log.Printf("  LED bounds:  %v", ledCanvas.LEDBounds())
+		log.Printf("  Canvas size: %dx%d", canvasBounds.Dx(), canvasBounds.Dy())
+		return
+	}
+
+	img, err := decodeImageFile(pflag.Arg(0))
+	if err != nil {
+		log.Fatalln("failed to decode source image:", err)
+	}
+
 	var imagedCanvas *image.NRGBA
-	imagedCanvas = imaging.Fit(img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.NearestNeighbor)
+	if fill {
+		imagedCanvas = imaging.Fill(
+			img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.Center, imaging.NearestNeighbor)
+	} else {
+		imagedCanvas = imaging.Fit(
+			img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.NearestNeighbor)
+	}
 	imagedCanvas = imaging.PasteCenter(image.NewNRGBA(canvasBounds), imagedCanvas)
 
 	start := time.Now()
@@ -85,14 +100,13 @@ func main() {
 	}
 	log.Println("rendered in", time.Since(start))
 
-	ledBounds := ledCanvas.LEDBounds()
-
 	outImage := image.NewRGBA(ledCanvas.LEDBounds())
 	draw.Draw(outImage, outImage.Bounds(), image.NewUniform(color.Black), image.ZP, draw.Src)
 
+	// TODO: write these points to a CSV file.
+	// TODO: write these points to a []color.RGBA file.
 	for i, led := range ledCanvas.LEDs() {
-		ledPt := ledPoints[i].Sub(ledBounds.Min)
-		xdraw.DrawCircle(outImage, ledPt, 3, led)
+		xdraw.DrawCircle(outImage, ledPoints[i], 3, led)
 	}
 
 	out, err := os.Create(outFile)
@@ -129,7 +143,7 @@ func readCSVPoints(csvPath string) ([]image.Point, error) {
 			}
 			return nil, err
 		}
-		if len(record) != 2 {
+		if len(record) < 2 {
 			return nil, fmt.Errorf("expected x,y point, got %v", record)
 		}
 
