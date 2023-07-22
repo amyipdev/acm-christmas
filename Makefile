@@ -36,5 +36,5 @@ bin/rpi-scanup:
 bin/rpi-worm:
 	GOOS=linux GOARCH=arm go build -o $@ ./cmd/rpi-worm
 
-bin/ffmpeg-bulk.sh: cmd/ffmpeg-bulk.sh
+bin/ffmpeg-bulk: cmd/ffmpeg-bulk
 	cp $< $@
