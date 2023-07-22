@@ -38,3 +38,6 @@ bin/rpi-worm:
 
 bin/ffmpeg-bulk: cmd/ffmpeg-bulk
 	cp $< $@
+
+bin/move-to-pi: cmd/move-to-pi
+	cp $< $@

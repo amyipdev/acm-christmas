@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ADDR=root@raspberrypi.local
+
+main() {
+	make "$1"
+	if [[ $(file "$1") != *'ELF 32-bit LSB executable, ARM'* ]]; then
+		echo "Not an ARM binary: $1" >&2
+		exit 1
+	fi
+
+	local name=$(basename "$1")
+	local servicePath=$(servicePath "$name")
+
+	local isService=
+
+	for f in "${@:2}"; do
+		case "$f" in
+		--service|-s)
+			isService=1
+			;;
+		*)
+			echo "Unknown option: $f" >&2
+			exit 1
+			;;
+		esac
+	done
+
+	scp "$0" "$ADDR:/tmp/pi-deploy"
+	scp "$1" "$ADDR:/tmp/pi-$name"
+
+	cat <<-EOF | ssh "$ADDR"
+	mv "/tmp/pi-$name" "/usr/bin/$name"
+
+	if [[ "$isService" || -f "$servicePath" ]]; then
+		if [[ ! -f "$servicePath" ]]; then
+			/tmp/pi-deploy generate-service-file "/usr/bin/$name" > "$servicePath"
+			systemctl daemon-reload
+		fi
+		systemctl restart "$name"
+	fi
+	EOF
+}
+
+# servicePath name
+servicePath() {
+	local name="$1"
+	echo "/etc/systemd/system/$name.service"
+}
+
+# generateServiceFile path/to/binary
+#
+# Generates a systemd service file for the given binary.
+generateServiceFile() {
+	local binary="$1"
+	cat <<-EOF
+	[Unit]
+	Description=Daemon for $(basename "$binary")
+	After=network.target
+	
+	[Service]
+	ExecStart=$binary
+	Restart=always
+	RestartSec=2
+	
+	[Install]
+	WantedBy=multi-user.target
+	EOF
+}
+
+case "$1" in
+bin/*)
+	main "$@"
+	;;
+generate-service-file)
+	generateServiceFile "$2"
+	;;
+*)
+	echo "Usage: $0 bin/program [args...]"
+	echo "       $0 generate-service-file path/to/program"
+	exit 1
+	;;
+esac
