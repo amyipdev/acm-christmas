@@ -24,8 +24,17 @@ bin/extract-frames:
 bin/big-spot:
 	go build -o $@ ./cmd/big-spot
 
-bin/live-capture.sh: cmd/live-capture.sh
-	cp $< $@
+.PHONY: bin/generate-patterns
+bin/generate-patterns:
+	go build -o $@ ./cmd/generate-patterns
+
+.PHONY: bin/rpi-scanup
+bin/rpi-scanup:
+	GOOS=linux GOARCH=arm go build -o $@ ./cmd/rpi-scanup
+
+.PHONY: bin/rpi-worm
+bin/rpi-worm:
+	GOOS=linux GOARCH=arm go build -o $@ ./cmd/rpi-worm
 
 bin/ffmpeg-bulk.sh: cmd/ffmpeg-bulk.sh
 	cp $< $@
