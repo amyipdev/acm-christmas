@@ -27,16 +27,24 @@ func main() {
 	ticker := time.NewTicker(wormSpeed)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		// Turn off the tail LED bulb.
-		colors[tail] = color.RGBA{0, 0, 0, 0}
+	writeTicker := time.NewTicker(10 * time.Millisecond)
+	defer writeTicker.Stop()
 
-		// Move the worm tail forward.
-		tail = (tail + 1) % numLEDs
+	for {
+		select {
+		case <-ticker.C:
+			// Turn off the tail LED bulb.
+			colors[tail] = color.RGBA{0, 0, 0, 0}
 
-		// Turn on the head LED bulb.
-		head := (tail + wormLength - 1) % numLEDs
-		colors[head] = colorOn
+			// Move the worm tail forward.
+			tail = (tail + 1) % numLEDs
+
+			// Turn on the head LED bulb.
+			head := (tail + wormLength - 1) % numLEDs
+			colors[head] = colorOn
+
+		case <-writeTicker.C:
+		}
 
 		// Update the LED strip.
 		state := interrupt.Disable()
