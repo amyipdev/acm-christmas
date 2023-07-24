@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BOOT_PATH="/run/media/diamond/bootfs"
+ROOT_PATH="/run/media/diamond/rootfs"
+
+main() {
+	echo "dtoverlay=dwc2" | sudo tee -a $BOOT_PATH/config.txt > /dev/null
+	sudo sed -i 's/rootwait/rootwait modules-load=dwc2,g_ether/' $BOOT_PATH/cmdline.txt
+	sudo touch $ROOT_PATH/ssh
+
+	sudo mkdir -p $ROOT_PATH/home/pi/.ssh
+	sudo mkdir -p $ROOT_PATH/root/.ssh
+
+	for k in ~/.ssh/id_*.pub; do
+		cat "$k" | sudo tee -a $ROOT_PATH/home/pi/.ssh/authorized_keys > /dev/null
+		cat "$k" | sudo tee -a $ROOT_PATH/root/.ssh/authorized_keys > /dev/null
+	done
+}
+
+main "$@"

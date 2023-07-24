@@ -41,3 +41,6 @@ bin/ffmpeg-bulk: cmd/ffmpeg-bulk
 
 bin/move-to-pi: cmd/move-to-pi
 	cp $< $@
+
+bin/prep-pi: cmd/prep-pi
+	cp $< $@
