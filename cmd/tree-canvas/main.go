@@ -31,7 +31,7 @@ var (
 	outFile       = "led-image.png"
 	maxPtDistance = 0.0 // auto
 	ppi           = 72.0
-	fill          = false
+	fit           = false
 )
 
 func init() {
@@ -39,7 +39,7 @@ func init() {
 	pflag.StringVarP(&outFile, "out", "o", outFile, "path to the output PNG file")
 	pflag.Float64Var(&maxPtDistance, "max-distance", maxPtDistance, "maximum distance between a point and an LED")
 	pflag.Float64Var(&ppi, "ppi", ppi, "pixels per inch")
-	pflag.BoolVar(&fill, "fill", fill, "fill or fit the source image (default: fit)")
+	pflag.BoolVar(&fit, "fit", fit, "fill or fit the source image (default: fill)")
 }
 
 func main() {
@@ -81,12 +81,12 @@ func main() {
 	}
 
 	var imagedCanvas *image.NRGBA
-	if fill {
-		imagedCanvas = imaging.Fill(
-			img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.Center, imaging.NearestNeighbor)
-	} else {
+	if fit {
 		imagedCanvas = imaging.Fit(
 			img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.NearestNeighbor)
+	} else {
+		imagedCanvas = imaging.Fill(
+			img, canvasBounds.Dx(), canvasBounds.Dy(), imaging.Center, imaging.NearestNeighbor)
 	}
 	imagedCanvas = imaging.PasteCenter(image.NewNRGBA(canvasBounds), imagedCanvas)
 
