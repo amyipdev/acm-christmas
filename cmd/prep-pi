@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# Script to prepare a Raspberry Pi-flashed SD card for headless operation. Once
+# the script finishes:
+#
+# 1. Plug the SD card into the Pi,
+# 2. Plug the Pi into your computer using a USB cable,
+# 3. Watch for a new USB Ethernet device to appear on your computer,
+#    then set its IPv4 mode to Link-Local Only and IPv6 mode to Disabled.
+# 4. Run `ssh root@raspberrypi.local`
+#
 set -euo pipefail
 
 BOOT_PATH="/run/media/diamond/bootfs"
@@ -7,7 +16,10 @@ ROOT_PATH="/run/media/diamond/rootfs"
 main() {
 	echo "dtoverlay=dwc2" | sudo tee -a $BOOT_PATH/config.txt > /dev/null
 	sudo sed -i 's/rootwait/rootwait modules-load=dwc2,g_ether/' $BOOT_PATH/cmdline.txt
+
+	# Not sure which file is the right one lol.
 	sudo touch $ROOT_PATH/ssh
+	sudo touch $BOOT_PATH/ssh
 
 	sudo mkdir -p $ROOT_PATH/home/pi/.ssh
 	sudo mkdir -p $ROOT_PATH/root/.ssh
