@@ -28,6 +28,11 @@ main() {
 		cat "$k" | sudo tee -a $ROOT_PATH/home/pi/.ssh/authorized_keys > /dev/null
 		cat "$k" | sudo tee -a $ROOT_PATH/root/.ssh/authorized_keys > /dev/null
 	done
+
+	# https://github.com/jgarff/rpi_ws281x#pwm
+	echo blacklist snd_bcm2835 | sudo tee $ROOT_PATH/etc/modprobe.d/snd-blacklist.conf > /dev/null
+	echo hdmi_force_hotplug=1 | sudo tee -a $BOOT_PATH/config.txt > /dev/null
+	echo hdmi_force_edid_audio=1 | sudo tee -a $BOOT_PATH/config.txt > /dev/null
 }
 
 main "$@"
