@@ -23,11 +23,11 @@ var readme string
 
 var (
 	startTime   = MustParseTime("00:00:00")
+	startFrame  = -1
 	wormSpeed   = 200 * time.Millisecond
-	numLEDs     = 50
+	numLEDs     = 100
 	addHalfStep = true
 	filters     = []string{}
-	ffmpegArgs  = []string{}
 )
 
 func init() {
@@ -45,11 +45,11 @@ func main() {
 	}
 
 	pflag.VarP(&startTime, "start-time", "s", "Start time in H:M:S, M:S or S format")
+	pflag.IntVarP(&startFrame, "start-frame", "S", startFrame, "Start frame, used if not -1")
 	pflag.DurationVarP(&wormSpeed, "worm-speed", "w", wormSpeed, "Worm speed")
 	pflag.IntVarP(&numLEDs, "num-leds", "n", numLEDs, "Number of LEDs")
 	pflag.BoolVarP(&addHalfStep, "add-half-step", "a", addHalfStep, "Add half a step to the start time")
 	pflag.StringSliceVarP(&filters, "filter", "f", filters, "Additional ffmpeg filters")
-	pflag.StringSliceVarP(&ffmpegArgs, "ffmpeg-args", "F", ffmpegArgs, "Additional ffmpeg arguments")
 	pflag.Parse()
 
 	inputFile := pflag.Arg(0)
@@ -98,18 +98,27 @@ func extractFrames(ctx context.Context, inputFile, outputDir string) error {
 		filter += strings.Join(filters, ",")
 	}
 
-	if _, err := run(ctx,
-		"ffmpeg",
+	ffFlags := []string{
 		"-loglevel", "error",
 		"-hide_banner",
-		"-ss", startTime.String(),
+	}
+
+	if startFrame >= 0 {
+		ffFlags = append(ffFlags, "-start_number", fmt.Sprintf("%d", startFrame))
+	} else {
+		ffFlags = append(ffFlags, "-ss", startTime.String())
+	}
+
+	ffFlags = append(ffFlags,
 		"-t", trimDuration.String(),
 		"-i", inputFile,
 		"-vf", filter,
 		"-vsync", "vfr",
 		"-q:v", "1",
 		filepath.Join(outputDir, "frame-%05d.jpg"),
-	); err != nil {
+	)
+
+	if _, err := run(ctx, "ffmpeg", ffFlags...); err != nil {
 		return fmt.Errorf("failed to extract frames: %w", err)
 	}
 
@@ -117,7 +126,6 @@ func extractFrames(ctx context.Context, inputFile, outputDir string) error {
 }
 
 func probeVideoFrameDuration(ctx context.Context, videoFile string) (time.Duration, error) {
-	// ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=avg_frame_rate
 	out, err := run(ctx,
 		"ffprobe",
 		"-v", "error",
