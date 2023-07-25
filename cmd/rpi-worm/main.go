@@ -8,16 +8,16 @@ import (
 	"github.com/Jon-Bright/ledctl/pixarray"
 )
 
-const numLEDs = 50
+const numLEDs = 100
 
 const wormLength = 1
-const wormSpeed = 200 * time.Millisecond
+const wormSpeed = 100 * time.Millisecond
 
 var colorOn = color.RGBA{255, 255, 255, 0}
 
 func main() {
 	strip, err := pixarray.NewWS281x(
-		numLEDs,      // 50 LEDs
+		numLEDs,      // LEDs
 		3,            // 3 bytes per pixel
 		pixarray.BGR, // BGR channel order
 		800000,       // 800 KHz
@@ -44,9 +44,19 @@ func main() {
 		head := (tail + wormLength - 1) % numLEDs
 		strip.SetPixel(head, rgbaToPixel(colorOn))
 
-		if err := strip.Write(); err != nil {
-			log.Println("failed to write:", err)
+		must(strip.Write())
+
+		if tail == 0 {
+			// Wait a bit before restarting the worm so it's easier to find it
+			// in the video.
+			time.Sleep(1 * time.Second)
 		}
+	}
+}
+
+func must(err error) {
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 
