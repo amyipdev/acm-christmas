@@ -36,6 +36,10 @@ bin/rpi-scanup:
 bin/rpi-worm:
 	GOOS=linux GOARCH=arm go build -o $@ ./cmd/rpi-worm
 
+.PHONY: bin/rpi-csv-colors
+bin/rpi-csv-colors:
+	GOOS=linux GOARCH=arm go build -o $@ ./cmd/rpi-csv-colors
+
 bin/ffmpeg-bulk: cmd/ffmpeg-bulk
 	cp $< $@
 
