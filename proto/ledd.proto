@@ -105,9 +105,11 @@ message FrameMetadata {
   // forever until a new frame is added. If multiple frames are added with a
   // duration of 0, only the last one will be shown.
   uint32 duration_ms = 1;
-  // The number of times to loop the frame. If 0, the frame will be looped
-  // forever.
-  optional uint32 loop_count = 2;
+  // The number of frames to jump back to when the frame is done playing. This
+  // is useful for looping animations. For example, if the animation is 3 frames
+  // long, and the jump back amount is 2, then the animation will play frames 1,
+  // 2, 3, 1, 2, 3, 1, 2, 3, ...
+  optional uint32 jump_back_amount = 2;
 }
 
 // Service for controlling the LED daemon.
