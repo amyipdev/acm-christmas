@@ -14,6 +14,7 @@ require (
 	golang.org/x/exp v0.0.0-20230711023510-fffb14384f22
 	golang.org/x/image v0.9.0
 	golang.org/x/sync v0.1.0
+	gopkg.in/typ.v4 v4.3.0
 )
 
 require (
