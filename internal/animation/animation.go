@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"log"
 	"time"
 
 	"gopkg.in/typ.v4/lists"
@@ -43,10 +44,10 @@ var metrics = expvar.NewMap("animation")
 
 // Player is an animation player. It is safe to use from multiple goroutines.
 type Player[Image any] struct {
-	C <-chan *Frame[Image]
+	C <-chan Frame[Image]
 
-	ch    chan *Frame[Image]
-	addCh chan []Frame[Image] // nil clears
+	ch    chan Frame[Image]
+	addCh chan Frame[Image] // nil clears
 
 	insert   *lists.Ring[Frame[Image]] // points to empty slot next to last frame
 	playback *lists.Ring[Frame[Image]] // points to current frame
@@ -54,44 +55,73 @@ type Player[Image any] struct {
 
 // NewPlayer creates a new animation player that can hold up to maxFrames
 // frames.
-func NewPlayer[Image any](maxFrames int) *Player[Image] {
-	ch := make(chan *Frame[Image])
+func NewPlayer[Image any]() *Player[Image] {
+	return NewPlayerWithSize[Image](100)
+}
+
+// NewPlayerWithSize creates a new animation player that can hold up to
+// maxFrames frames.
+func NewPlayerWithSize[Image any](maxFrames int) *Player[Image] {
+	if maxFrames < 2 {
+		panic("maxFrames must be at least 2")
+	}
+
+	ch := make(chan Frame[Image])
 	frames := lists.NewRing[Frame[Image]](maxFrames)
 
 	return &Player[Image]{
 		C:        ch,
 		ch:       ch,
-		addCh:    make(chan []Frame[Image]),
+		addCh:    make(chan Frame[Image]),
 		insert:   frames,
 		playback: frames.Prev(),
 	}
 }
 
-// AddFrames adds frames to the animation. If the player is full, the oldest
-// frames will be overwritten.
-func (p *Player[Image]) AddFrames(frames []Frame[Image]) {
-	p.addCh <- frames
+// AddFrames adds a frame to the animation. If the player is full, the function
+// blocks until there is room for the frame.
+func (p *Player[Image]) AddFrame(ctx context.Context, frame Frame[Image]) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case p.addCh <- frame:
+		return nil
+	}
 }
 
-// ClearFrames clears all frames from the animation.
-func (p *Player[Image]) ClearFrames() {
-	p.addCh <- nil
+// AddFrames adds multiple frames to the animation. If the player is full, the
+// function blocks until there is room for the frames.
+func (p *Player[Image]) AddFrames(ctx context.Context, frames []Frame[Image]) error {
+	for _, frame := range frames {
+		if err := p.AddFrame(ctx, frame); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Play starts playing the animation. Play returns when the animation is
 // finished or when the context is canceled.
 func (p *Player[Image]) Play(ctx context.Context) error {
-	var frameCh chan *Frame[Image]
+	var frameCh chan Frame[Image]
+	addCh := p.addCh
 
-	var currentFrame *Frame[Image]
+	var currentFrame Frame[Image]
 	var nextFrame *Frame[Image]
 
 	nextFrameTimer := time.NewTimer(0)
-	nextFrameTimer.Stop()
+	if !nextFrameTimer.Stop() {
+		<-nextFrameTimer.C
+	}
 	defer nextFrameTimer.Stop()
 
 	scheduleNextFrame := func() {
+		if nextFrame != nil {
+			panic("scheduleNextFrame called but nextFrame is still not used")
+		}
+
 		f, ok := p.nextFrame()
+		log.Printf("schedule next frame: %v", f)
 		if ok {
 			nextFrameTimer.Reset(f.Duration())
 			nextFrame = f
@@ -99,6 +129,9 @@ func (p *Player[Image]) Play(ctx context.Context) error {
 			nextFrameTimer.Stop()
 			nextFrame = nil
 		}
+
+		// We can take more frames now, so unblock the addCh.
+		addCh = p.addCh
 	}
 
 	for {
@@ -106,44 +139,39 @@ func (p *Player[Image]) Play(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case frames := <-p.addCh:
-			if frames == nil {
-				p.clearFrames()
-				break
+		case frame := <-addCh:
+			p.addFrame(frame)
+			if p.isFull() {
+				addCh = nil
 			}
 
-			if !p.addFrames(frames) {
-				return ErrFramebufferOverflow
-			}
-
-			if currentFrame == nil {
+			if nextFrame == nil {
 				// No frame is currently being played, so start playing the
 				// first frame.
 				scheduleNextFrame()
 			}
 
 		case <-nextFrameTimer.C:
-			if currentFrame != nil {
+			if nextFrame == nil {
+				panic("unreachable: nextFrameTimer fired but nextFrame is nil")
+			}
+
+			if frameCh != nil {
 				// Timer for next frame fired, but the previous frame hasn't
 				// been sent yet. This means that the receiver is too slow.
 				metrics.Add(metricDroppedFrames, 1)
 			}
 
-			currentFrame = nextFrame
-			// A nil frame means that we ran out of frames, so don't send any
-			// more.
-			if currentFrame != nil {
-				frameCh = p.ch
-				// Advancing the frame here instead of waiting for the receiver
-				// to pick up the frame. This ensures that the animation is
-				// played at the correct speed even if the receiver is slow.
-				scheduleNextFrame()
-			}
+			currentFrame, nextFrame = *nextFrame, nil
+			frameCh = p.ch
+
+			// Advancing the frame here instead of waiting for the receiver
+			// to pick up the frame. This ensures that the animation is
+			// played at the correct speed even if the receiver is slow.
+			scheduleNextFrame()
 
 		case frameCh <- currentFrame:
 			frameCh = nil
-			currentFrame = nil
-
 			metrics.Add(metricTotalFrames, 1)
 		}
 	}
@@ -151,19 +179,9 @@ func (p *Player[Image]) Play(ctx context.Context) error {
 
 // addFrame adds a frame to the player. If the player is already full, false is
 // returned and the player halts.
-func (p *Player[Image]) addFrame(f Frame[Image]) bool {
+func (p *Player[Image]) addFrame(f Frame[Image]) {
 	p.insert.Value = f
 	p.insert = p.insert.Next()
-	return p.insert != p.playback
-}
-
-func (p *Player[Image]) addFrames(frames []Frame[Image]) bool {
-	for _, f := range frames {
-		if !p.addFrame(f) {
-			return false
-		}
-	}
-	return true
 }
 
 func (p *Player[Image]) clearFrames() {
@@ -192,4 +210,26 @@ func (p *Player[Image]) nextFrame() (*Frame[Image], bool) {
 
 	p.playback = current
 	return &current.Value, true
+}
+
+// isFull returns true if the player cannot take in any more frames.
+func (p *Player[Image]) isFull() bool {
+	return p.insert == p.playback
+}
+
+// safeList provides non-panic access to a list.
+type safeList[T any] []T
+
+func (s *safeList[T]) first() *T {
+	if len(*s) == 0 {
+		return nil
+	}
+	return &(*s)[0]
+}
+
+func (s *safeList[T]) last() *T {
+	if len(*s) == 0 {
+		return nil
+	}
+	return &(*s)[len(*s)-1]
 }

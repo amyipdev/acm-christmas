@@ -20,13 +20,13 @@ const frameTimeMargin = 5 * time.Millisecond
 func TestPlayer(t *testing.T) {
 	t.Run("short", func(t *testing.T) {
 		p, _ := startPlayer(t, 10)
-		p.AddFrames([]Frame[testFrame]{
+		mustAddFrames(t, p, []Frame[testFrame]{
 			{testFrame{"frame 1"}, 0, 100},
 			{testFrame{"frame 2"}, 0, 150},
 			{testFrame{"frame 3"}, 0, 200},
 			{testFrame{"frame 4"}, 0, 250},
 		})
-		expectFrames(t, p, []*Frame[testFrame]{
+		expectFrames(t, p, []Frame[testFrame]{
 			{testFrame{"frame 1"}, 0, 100},
 			{testFrame{"frame 2"}, 0, 150},
 			{testFrame{"frame 3"}, 0, 200},
@@ -36,13 +36,13 @@ func TestPlayer(t *testing.T) {
 
 	t.Run("loop", func(t *testing.T) {
 		p, _ := startPlayer(t, 10)
-		p.AddFrames([]Frame[testFrame]{
+		mustAddFrames(t, p, []Frame[testFrame]{
 			{testFrame{"frame 1"}, 0, 100},
 			{testFrame{"frame 2"}, 0, 150},
 			{testFrame{"frame 3"}, 0, 200},
 			{testFrame{"frame 4"}, 3, 250},
 		})
-		expectFrames(t, p, []*Frame[testFrame]{
+		expectFrames(t, p, []Frame[testFrame]{
 			{testFrame{"frame 1"}, 0, 100},
 			{testFrame{"frame 2"}, 0, 150},
 			{testFrame{"frame 3"}, 0, 200},
@@ -54,15 +54,48 @@ func TestPlayer(t *testing.T) {
 		})
 	})
 
-	t.Run("overflow", func(t *testing.T) {
-		p, expectErr := startPlayer(t, 2)
-		p.AddFrames([]Frame[testFrame]{
+	t.Run("race", func(t *testing.T) {
+		p, _ := startPlayer(t, 10)
+		go mustAddFrames(t, p, []Frame[testFrame]{
 			{testFrame{"frame 1"}, 0, 100},
 			{testFrame{"frame 2"}, 0, 150},
 			{testFrame{"frame 3"}, 0, 200},
 			{testFrame{"frame 4"}, 0, 250},
 		})
-		expectErr(ErrFramebufferOverflow)
+		expectFrames(t, p, []Frame[testFrame]{
+			{testFrame{"frame 1"}, 0, 100},
+			{testFrame{"frame 2"}, 0, 150},
+			{testFrame{"frame 3"}, 0, 200},
+			{testFrame{"frame 4"}, 0, 250},
+		})
+	})
+
+	t.Run("interleave", func(t *testing.T) {
+		p, _ := startPlayer(t, 10)
+		mustAddFrames(t, p, []Frame[testFrame]{{testFrame{"frame 1"}, 0, 100}})
+		expectFrames(t, p, []Frame[testFrame]{{testFrame{"frame 1"}, 0, 100}})
+		mustAddFrames(t, p, []Frame[testFrame]{{testFrame{"frame 2"}, 0, 150}})
+		expectFrames(t, p, []Frame[testFrame]{{testFrame{"frame 2"}, 0, 150}})
+		mustAddFrames(t, p, []Frame[testFrame]{{testFrame{"frame 3"}, 0, 200}})
+		expectFrames(t, p, []Frame[testFrame]{{testFrame{"frame 3"}, 0, 200}})
+		mustAddFrames(t, p, []Frame[testFrame]{{testFrame{"frame 4"}, 0, 250}})
+		expectFrames(t, p, []Frame[testFrame]{{testFrame{"frame 4"}, 0, 250}})
+	})
+
+	t.Run("overflow", func(t *testing.T) {
+		p, _ := startPlayer(t, 2)
+		go mustAddFrames(t, p, []Frame[testFrame]{
+			{testFrame{"frame 1"}, 0, 100},
+			{testFrame{"frame 2"}, 0, 150},
+			{testFrame{"frame 3"}, 0, 200},
+			{testFrame{"frame 4"}, 0, 250},
+		})
+		expectFrames(t, p, []Frame[testFrame]{
+			{testFrame{"frame 1"}, 0, 100},
+			{testFrame{"frame 2"}, 0, 150},
+			{testFrame{"frame 3"}, 0, 200},
+			{testFrame{"frame 4"}, 0, 250},
+		})
 	})
 
 	t.Run("no_frames", func(t *testing.T) {
@@ -75,16 +108,21 @@ func TestPlayer(t *testing.T) {
 	})
 }
 
-func startPlayer(t *testing.T, maxFrames int) (player *Player[testFrame], done func(error)) {
-	ctx, cancel := context.WithCancel(context.Background())
+type testPlayer[Image any] struct {
+	*Player[Image]
+	ctx context.Context
+}
+
+func startPlayer(t *testing.T, maxFrames int) (player *testPlayer[testFrame], done func(error)) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	p := NewPlayer[testFrame](maxFrames)
+	p := NewPlayerWithSize[testFrame](maxFrames)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- p.Play(ctx) }()
 
-	return p, func(expectErr error) {
+	return &testPlayer[testFrame]{p, ctx}, func(expectErr error) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -100,15 +138,14 @@ func startPlayer(t *testing.T, maxFrames int) (player *Player[testFrame], done f
 	}
 }
 
-func expectFrames(t *testing.T, p *Player[testFrame], frames []*Frame[testFrame]) {
+func expectFrames(t *testing.T, p *testPlayer[testFrame], frames []Frame[testFrame]) {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(),
-		time.Duration(len(frames))*time.Second)
+	ctx, cancel := context.WithCancel(p.ctx)
 	defer cancel()
 
 	var lastTime time.Time
-	var frame *Frame[testFrame]
+	var frame Frame[testFrame]
 
 	for len(frames) > 0 {
 		select {
@@ -133,5 +170,12 @@ func expectFrames(t *testing.T, p *Player[testFrame], frames []*Frame[testFrame]
 
 		assert.Equal(t, frames[0], frame)
 		frames = frames[1:]
+	}
+}
+
+func mustAddFrames(t *testing.T, p *testPlayer[testFrame], frames []Frame[testFrame]) {
+	t.Helper()
+	if err := p.AddFrames(p.ctx, frames); err != nil {
+		t.Error(err)
 	}
 }
