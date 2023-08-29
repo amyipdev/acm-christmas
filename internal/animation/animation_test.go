@@ -120,7 +120,7 @@ func startPlayer(t *testing.T, maxFrames int) (player *testPlayer[testFrame], do
 	p := NewPlayerWithSize[testFrame](maxFrames)
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- p.Play(ctx) }()
+	go func() { errCh <- p.Run(ctx) }()
 
 	return &testPlayer[testFrame]{p, ctx}, func(expectErr error) {
 		if ctx.Err() != nil {

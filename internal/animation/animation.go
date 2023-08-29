@@ -100,9 +100,9 @@ func (p *Player[Image]) AddFrames(ctx context.Context, frames []Frame[Image]) er
 	return nil
 }
 
-// Play starts playing the animation. Play returns when the animation is
+// Run starts playing the animation. Run returns when the animation is
 // finished or when the context is canceled.
-func (p *Player[Image]) Play(ctx context.Context) error {
+func (p *Player[Image]) Run(ctx context.Context) error {
 	var frameCh chan Frame[Image]
 	addCh := p.addCh
 
@@ -110,10 +110,11 @@ func (p *Player[Image]) Play(ctx context.Context) error {
 	var nextFrame *Frame[Image]
 
 	nextFrameTimer := time.NewTimer(0)
+	defer nextFrameTimer.Stop()
+
 	if !nextFrameTimer.Stop() {
 		<-nextFrameTimer.C
 	}
-	defer nextFrameTimer.Stop()
 
 	scheduleNextFrame := func() {
 		if nextFrame != nil {
@@ -215,21 +216,4 @@ func (p *Player[Image]) nextFrame() (*Frame[Image], bool) {
 // isFull returns true if the player cannot take in any more frames.
 func (p *Player[Image]) isFull() bool {
 	return p.insert == p.playback
-}
-
-// safeList provides non-panic access to a list.
-type safeList[T any] []T
-
-func (s *safeList[T]) first() *T {
-	if len(*s) == 0 {
-		return nil
-	}
-	return &(*s)[0]
-}
-
-func (s *safeList[T]) last() *T {
-	if len(*s) == 0 {
-		return nil
-	}
-	return &(*s)[len(*s)-1]
 }
