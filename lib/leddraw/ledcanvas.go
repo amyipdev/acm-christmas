@@ -3,35 +3,11 @@ package leddraw
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"math"
 
 	"libdb.so/acm-christmas/internal/intmath"
 	"libdb.so/acm-christmas/internal/xcolor"
 )
-
-// LEDStrip is a strip of LEDs. It is represented as a slice of colors, where
-// each color represents the color of an LED.
-type LEDStrip []xcolor.RGB
-
-// Setxcolor.RGBA sets the xcolor.RGBA color of the LED at index i. Alpha is ignored.
-func (s LEDStrip) SetRGBA(i int, c color.RGBA) {
-	s[i] = xcolor.RGBFromRGBA(c)
-}
-
-// Set sets the color of the LED at index i.
-func (s LEDStrip) Set(i int, c color.Color) {
-	s[i] = xcolor.RGBFromColor(c)
-}
-
-// Clear clears the LED strip.
-func (s LEDStrip) Clear() {
-	// This should be replaced with a memclr by the compiler.
-	// On ARM, it does 32 bytes (~10 LEDs) at a time.
-	for i := range s {
-		s[i] = xcolor.RGB{}
-	}
-}
 
 // LEDCanvas is a canvas of LED points.
 type LEDCanvas struct {
@@ -84,59 +60,6 @@ func applyIntensity(c xcolor.RGB, intensity float32) xcolor.RGB {
 		G: uint8(float32(c.G) * intensity),
 		B: uint8(float32(c.B) * intensity),
 	}
-}
-
-// IntensityFunc is a function that calculates the intensity of a pixel based on
-// the distance between the pixel and the nearest LED. The intensity is a value
-// between 0 and 1, where 0 is the lowest intensity and 1 is the highest
-// intensity.
-//
-// For examples of intensity functions visualized, see
-// https://www.desmos.com/calculator/thw9ho0ivd.
-type IntensityFunc func(distance float64) float64
-
-// NewLinearIntensity creates a new IntensityFunc that calculates the intensity
-// of a pixel based on the distance between the pixel and the nearest LED. The
-// intensity is calculated using a linear function.
-func NewLinearIntensity(maxDistance float64) IntensityFunc {
-	return func(distance float64) float64 {
-		if distance > maxDistance {
-			return 0
-		}
-		return 1 - distance/maxDistance
-	}
-}
-
-// NewCubicIntensity creates a new IntensityFunc that calculates the intensity
-// of a pixel based on the distance between the pixel and the nearest LED. The
-// intensity is calculated using a cubic function.
-func NewCubicIntensity(maxDistance float64) IntensityFunc {
-	return func(distance float64) float64 {
-		if distance > maxDistance {
-			return 0
-		}
-		return 1 - cubicEaseInOut(distance/maxDistance)
-	}
-}
-
-// NewStepIntensity creates a new IntensityFunc that calculates the intensity
-// of a pixel based on the distance between the pixel and the nearest LED. The
-// intensity is 1 if the distance is less than the max distance, and 0
-// otherwise.
-func NewStepIntensity(maxDistance float64) IntensityFunc {
-	return func(distance float64) float64 {
-		if distance > maxDistance {
-			return 0
-		}
-		return 1
-	}
-}
-
-func cubicEaseInOut(t float64) float64 {
-	if t < 0.5 {
-		return 4 * t * t * t
-	}
-	return 1 - math.Pow(-2*t+2, 3)/2
 }
 
 // LEDCanvasOpts is a set of options for creating a new LEDCanvas.
