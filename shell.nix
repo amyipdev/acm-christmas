@@ -4,67 +4,26 @@ let
 	pkgs = import ./nix/pkgs.nix {};
 in
 
-let
-	# Tinygo target for gopls to use.
-	tinygoTarget = "esp32-coreboard-v2";
-	tinygoPaths = [ "esp32" ];
-
-	tinygoHook =
-		with pkgs.lib;
-		with builtins;
-		''
-			isTinygo() {
-				root=${escapeShellArg (toString ./.)}
-				path="''${PWD#"$root/"*}"
-
-				for p in $TINYGO_PATHS; do
-					if [[ $path == $p* ]]; then
-						return 0
-					fi
-				done
-
-				return 1
-			}
-
-			hookTinygoEnv() {
-				vars=$(tinygo info -json -target $TINYGO_TARGET)
-
-				export GOROOT=$(jq -r '.goroot' <<< "$vars")
-				export GOARCH=$(jq -r '.goarch' <<< "$vars")
-				export GOOS=$(jq -r '.goos' <<< "$vars")
-				export GOFLAGS="-tags=$(jq -r '.build_tags | join(",")' <<< "$vars")"
-			}
-		'';
-
-	withTinygoHook = name: bin:
-		pkgs.writeShellScriptBin name ''
-			${tinygoHook}
-			if isTinygo; then
-				echo "Detected Tinygo, loading for target $TINYGO_TARGET" >&2
-				hookTinygoEnv
-			fi
-			exec ${bin} "$@"
-		'';
-
-  go = withTinygoHook "go" "${pkgs.go}/bin/go";
-	gopls = withTinygoHook "gopls" "${pkgs.gopls}/bin/gopls";
-	goimports = withTinygoHook "goimports" "${pkgs.gotools}/bin/goimports";
-
-	staticcheck = pkgs.writeShellScriptBin "staticcheck" ''
-		${tinygoHook}
-		if isTinygo; then
-			echo "Not running staticcheck for Tinygo" >&2
-			exit 0
-		fi
-		exec ${pkgs.go-tools}/bin/staticcheck "$@"
-	'';
-
-	# Use the precompiled Tinygo which has ESP32 support.
-	tinygo = pkgs.callPackage ./nix/tinygo.nix {};
-in
-
 with pkgs.lib;
 with builtins;
+
+let
+	gogio = pkgs.buildGoModule rec {
+		pname = "gogio";
+		version = "7cb98d05";
+
+		src = pkgs.fetchgit {
+			url = "https://git.sr.ht/~eliasnaur/gio-cmd";
+			rev = version;
+			sha256 = "sha256-sCNmTSBdg5CG2zdydd83OFjffIshtfEAIVLuHBXIckk=";
+		};
+
+		vendorSha256 = "sha256-2LQCFYyEletx+FswLV1Ui506qG62yHUKGr5vP5Y/b/s=";
+
+		doCheck = false;
+		subPackages = [ "gogio" ];
+	};
+in
 
 pkgs.mkShell {
 	buildInputs = with pkgs; [
@@ -80,12 +39,22 @@ pkgs.mkShell {
 		# Go tools.
 		go
 		gopls
-		goimports
-		staticcheck
+		gotools
+		go-tools # staticcheck
 
-		# ESP32 programming.
+		# WebAssembly.
 		tinygo
-		esptool
+
+		# Gio dependencies.
+		gogio
+		vulkan-headers
+		libxkbcommon
+		wayland
+		xorg.libX11
+		xorg.libXcursor
+		xorg.libXfixes
+		libGL
+		pkg-config
 	];
 
 	shellHook = ''
@@ -93,6 +62,4 @@ pkgs.mkShell {
 	'';
 
 	CGO_ENABLED = "1";
-	TINYGO_PATHS = toString tinygoPaths;
-	TINYGO_TARGET = tinygoTarget;
 }
