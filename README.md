@@ -89,12 +89,19 @@ live-capture snapshot /tmp/snapshot.png
 > **Note**: If the snapshot is also a BMP file, no conversion is performed, so
 > the snapshot will be very fast.
 
-### ledd
+### christmasd
 
 The actual daemon that controls the LEDs. It exposes an HTTP server that can be
 invoked to set the color of a given LED as well as perform various other
 higher-level tasks.
 
-See [proto/ledd.proto](proto/ledd.proto) for the full API.
+See [proto/christmasd.proto](proto/christmasd.proto) for the full API.
+
+### christmas-gio
+
+A variant of `christmasd` that uses [GIO](https://gioui.org/) to render the
+LEDs to a window instead of actually controlling the LEDs. This daemon exposes
+a local HTTP server that can be used to control the LEDs. It follows the same
+Proto API as the above.
 
 TODO: implement
