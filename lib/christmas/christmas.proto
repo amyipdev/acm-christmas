@@ -44,6 +44,9 @@ message LEDServerMessage {
     // Response to GetLEDsRequest.
     GetLEDsResponse get_leds = 3;
   }
+  // If present, the server encountered an error. This is a string describing
+  // the error.
+  optional string error = 100;
 }
 
 message AuthenticateRequest {

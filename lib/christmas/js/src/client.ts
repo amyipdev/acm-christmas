@@ -55,10 +55,22 @@ export class Client extends Emitter<Events> {
     this.ws.send(LEDClientMessage.encode(message).finish());
   }
 
-  async nextMessage(type?: keyof LEDServerMessage): Promise<LEDServerMessage> {
+  async nextMessage(
+    types?: keyof LEDServerMessage | keyof LEDServerMessage[],
+  ): Promise<LEDServerMessage> {
+    let isMatch: (ev: LEDServerMessage) => boolean;
+    if (types) {
+      if (Array.isArray(types)) {
+        isMatch = (ev) =>
+          (types as (keyof LEDServerMessage)[]).some((type) => !!ev[type]);
+      } else {
+        isMatch = (ev) => !!ev[types as keyof LEDServerMessage];
+      }
+    }
+
     return new Promise((resolve, reject) => {
       const onMessage = (ev: LEDServerMessage) => {
-        if (!type || ev[type]) {
+        if (!isMatch || isMatch(ev)) {
           unbind();
           resolve(ev);
         }

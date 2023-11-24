@@ -51,7 +51,14 @@ export interface LEDServerMessage {
     | GetLEDCanvasInfoResponse
     | undefined;
   /** Response to GetLEDsRequest. */
-  getLeds?: GetLEDsResponse | undefined;
+  getLeds?:
+    | GetLEDsResponse
+    | undefined;
+  /**
+   * If present, the server encountered an error. This is a string describing
+   * the error.
+   */
+  error?: string | undefined;
 }
 
 export interface AuthenticateRequest {
@@ -252,7 +259,7 @@ export const LEDClientMessage = {
 };
 
 function createBaseLEDServerMessage(): LEDServerMessage {
-  return { authenticate: undefined, getLedCanvasInfo: undefined, getLeds: undefined };
+  return { authenticate: undefined, getLedCanvasInfo: undefined, getLeds: undefined, error: undefined };
 }
 
 export const LEDServerMessage = {
@@ -265,6 +272,9 @@ export const LEDServerMessage = {
     }
     if (message.getLeds !== undefined) {
       GetLEDsResponse.encode(message.getLeds, writer.uint32(26).fork()).ldelim();
+    }
+    if (message.error !== undefined) {
+      writer.uint32(802).string(message.error);
     }
     return writer;
   },
@@ -297,6 +307,13 @@ export const LEDServerMessage = {
 
           message.getLeds = GetLEDsResponse.decode(reader, reader.uint32());
           continue;
+        case 100:
+          if (tag !== 802) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -313,6 +330,7 @@ export const LEDServerMessage = {
         ? GetLEDCanvasInfoResponse.fromJSON(object.getLedCanvasInfo)
         : undefined,
       getLeds: isSet(object.getLeds) ? GetLEDsResponse.fromJSON(object.getLeds) : undefined,
+      error: isSet(object.error) ? globalThis.String(object.error) : undefined,
     };
   },
 
@@ -326,6 +344,9 @@ export const LEDServerMessage = {
     }
     if (message.getLeds !== undefined) {
       obj.getLeds = GetLEDsResponse.toJSON(message.getLeds);
+    }
+    if (message.error !== undefined) {
+      obj.error = message.error;
     }
     return obj;
   },
@@ -344,6 +365,7 @@ export const LEDServerMessage = {
     message.getLeds = (object.getLeds !== undefined && object.getLeds !== null)
       ? GetLEDsResponse.fromPartial(object.getLeds)
       : undefined;
+    message.error = object.error ?? undefined;
     return message;
   },
 };
