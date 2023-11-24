@@ -27,14 +27,16 @@ in
 
 pkgs.mkShell {
 	buildInputs = with pkgs; [
+		bash
 		niv
 		jq
 		moreutils # for parallel
-
 		ffmpeg-full
-		bash
+
+		# Protobuf tools.
 		protobuf
 		protolint
+		protoc-gen-go
 
 		# Go tools.
 		go
@@ -44,17 +46,6 @@ pkgs.mkShell {
 
 		# WebAssembly.
 		tinygo
-
-		# Gio dependencies.
-		gogio
-		vulkan-headers
-		libxkbcommon
-		wayland
-		xorg.libX11
-		xorg.libXcursor
-		xorg.libXfixes
-		libGL
-		pkg-config
 	];
 
 	shellHook = ''
