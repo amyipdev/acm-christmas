@@ -4,6 +4,7 @@ with pkgs;
 mkShell {
 	buildInputs = with pkgs; [
 		protobuf
+		esbuild
 		nodejs
 	];
 
