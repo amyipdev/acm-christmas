@@ -70,7 +70,7 @@ message GetLEDsResponse {
 
 message SetLEDsRequest {
   // A 1D array of colors. The number of colors must match the number of LEDs.
-  // To get the number of LEDs, call GetLEDs.
+  // To get the number of LEDs, take the length of GetLEDsResponse.
   repeated Color leds = 1;
 }
 
