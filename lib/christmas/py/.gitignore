@@ -1,3 +1,5 @@
 .venv
 __pycache__
 venv/
+*_pb2.py
+dist/
